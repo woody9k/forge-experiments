@@ -91,7 +91,8 @@ v0.2.0 shape library: `sphere`, `spherical_shell`, `torus`, `box`,
 (restricted expression in `r_normalized`, evaluated numerically). Motion:
 `none`, `rotation` (axis + angular velocity; rigid, validity-checked).
 CSG, segmented/layered structures, velocity fields: schema reserved,
-compiler rejects with explicit `unsupported`.
+compiler rejects with explicit `unsupported`. Full file-format reference:
+[matter-configuration-spec.md](matter-configuration-spec.md).
 
 ## 3. Stress-energy composition approach
 
