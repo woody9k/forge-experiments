@@ -275,6 +275,94 @@ def test_skeptic_veto_stops_run_and_supersedes_plan(env, monkeypatch):
     assert len(store.list_matter_configurations()) == 1  # but no child was made
 
 
+def test_crash_resume_cannot_bypass_plan_veto(env, monkeypatch):
+    """Regression (PR #3 review must-fix 1): if the process dies after the
+    veto critique is persisted but before the run moves to STOP, resume must
+    still STOP with the veto — never proceed into POLICY_CHECK."""
+    client, tmp_path = env
+    from apps.coordinator import sage_runtime, store
+    from forge_sage import ResearchProgram, ResearchRun
+
+    config_id = _seed_configuration()
+    _designer_script(tmp_path, monkeypatch, config_id, extra={
+        "skeptic": [{"output": {"verdict": "veto", "findings": [{
+            "category": "resolution", "statement": "no convergence evidence",
+            "severity": "veto", "proposed_counter_test": "resolution study",
+        }]}}]})
+    prog = _bootstrap_program(client, config_id)
+    state = _start_and_step(client, prog["id"])
+    run_id = state["run"]["id"]
+    hyp = client.get(f"/api/v1/sage/programs/{prog['id']}/hypotheses").json()[0]
+    client.post(f"/api/v1/sage-admin/hypotheses/{hyp['id']}/review", json=ADMIN)
+
+    # Advance exactly one state (DESIGN -> CRITIQUE_PLAN)...
+    run = ResearchRun.model_validate(store.load_research_run(run_id))
+    result = sage_runtime.advance(run)
+    run = result["run"]
+    assert run.state.value == "critique_plan"
+    # ...then run the critique handler directly and DISCARD its outcome —
+    # this is the crash: critique + pointer + superseded plan are persisted,
+    # but the run never moved to STOP.
+    program = ResearchProgram.model_validate(store.load_program(prog["id"]))
+    outcome = sage_runtime._h_critique_plan(run, program)
+    assert outcome[0].value == "stop"  # the handler wanted to stop...
+    assert store.load_research_run(run_id)["state"] == "critique_plan"  # ...crash
+
+    # Resume: must cleanly STOP with the veto reason, not IllegalTransition.
+    state = client.post(f"/api/v1/sage/runs/{run_id}/step").json()
+    assert state["run"]["state"] == "stop"
+    assert "veto" in state["run"]["stop_reason"]
+    # The skeptic was not re-invoked on resume.
+    skeptic_runs = [m for m in client.get(
+        f"/api/v1/sage/programs/{prog['id']}/model-runs").json()
+        if m["role"] == "skeptic"]
+    assert len(skeptic_runs) == 1
+    # And no execution happened.
+    from apps.coordinator import store as st
+    assert len(st.list_matter_configurations()) == 1
+
+
+def test_mid_execute_crash_completes_under_reserved_id(env, monkeypatch):
+    """Regression (PR #3 review must-fix 2): the ledger key is written before
+    the side effect, so a crash between reserving and submitting resumes by
+    completing the analysis under the reserved id — never duplicating."""
+    client, tmp_path = env
+    from apps.coordinator import store
+    from forge_domain.entities import new_id
+
+    config_id = _seed_configuration()
+    _designer_script(tmp_path, monkeypatch, config_id)
+    prog = _bootstrap_program(client, config_id)
+    state = _start_and_step(client, prog["id"])
+    run_id = state["run"]["id"]
+    hyp = client.get(f"/api/v1/sage/programs/{prog['id']}/hypotheses").json()[0]
+    client.post(f"/api/v1/sage-admin/hypotheses/{hyp['id']}/review", json=ADMIN)
+    state = client.post(f"/api/v1/sage/runs/{run_id}/step").json()
+    plan = client.get(f"/api/v1/sage/programs/{prog['id']}/plans").json()[0]
+    approval = client.get("/api/v1/sage-admin/approvals").json()[0]
+    client.post(f"/api/v1/sage-admin/approvals/{approval['id']}/decide", json=ADMIN)
+
+    # Simulate the crashed attempt: the baseline key was reserved (with the id
+    # the analysis WILL get) but the process died before submitting.
+    reserved = new_id()
+    store.record_idempotent(prog["id"], f"plan:{plan['id']}:analysis:baseline",
+                            "matter_analysis", reserved)
+    assert store.load_matter_analysis(reserved) is None  # nothing ran yet
+
+    # Resume: execution completes under the reserved id; exactly two analyses.
+    state = client.post(f"/api/v1/sage/runs/{run_id}/step").json()
+    assert state["run"]["state"] == "promote", state
+    assert store.load_matter_analysis(reserved) is not None
+    assert store.load_matter_analysis(reserved)["status"] == "completed"
+    assert len(store.list_matter_configurations()) == 2  # baseline + one child
+    # The claim's baseline evidence cites the reserved id.
+    claim = client.get(f"/api/v1/sage/programs/{prog['id']}/claims").json()[0]
+    detail = client.get(f"/api/v1/sage/claims/{claim['id']}").json()
+    baseline_ev = [e for e in detail["evidence"]
+                   if e["relationship"] == "baseline_for"][0]
+    assert baseline_ev["source_id"] == reserved
+
+
 def test_level_0_program_cannot_reach_execution(env, monkeypatch):
     client, tmp_path = env
     config_id = _seed_configuration()

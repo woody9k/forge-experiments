@@ -27,8 +27,17 @@ def _dump(path: Path, obj) -> str:
 
 
 def analyze_and_bundle(config: MatterConfiguration, max_gate: int = 2,
-                       seed: int = 0) -> tuple[MatterAnalysis, Path]:
+                       seed: int = 0,
+                       analysis_id: str | None = None) -> tuple[MatterAnalysis, Path]:
+    """Run the funnel and write the checksummed bundle.
+
+    ``analysis_id``, when given, is a caller-reserved id (e.g. from SAGE's
+    idempotency ledger) assigned to the analysis before bundling, so a crashed
+    submission can be completed under the same id instead of duplicating.
+    """
     analysis = run_funnel(config, max_gate=max_gate, seed=seed)
+    if analysis_id is not None:
+        analysis.id = analysis_id
     bundle = experiments_dir() / f"matter-{analysis.id}"
     bundle.mkdir(parents=True, exist_ok=True)
 
