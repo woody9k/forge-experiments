@@ -51,7 +51,7 @@ from apps.coordinator.provenance import (
 # schwarzschild=12 (both fully simplify in <1 s); alcubierre=96, natario=101
 # (full simplification of their Riemann tensors takes minutes to hours).
 SIMPLIFY_OP_BUDGET = 40
-SOFTWARE_VERSION = "0.1.0"
+SOFTWARE_VERSION = "0.2.0"
 
 
 def experiments_dir() -> Path:
