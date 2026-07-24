@@ -1,0 +1,47 @@
+name: alcubierre
+version: 1.0.0
+description: >
+  Alcubierre warp-drive metric (1994) in Cartesian coordinates, geometrized
+  units, with the original tanh wall function
+  f(r_s) = [tanh(sigma(r_s+R)) - tanh(sigma(r_s-R))] / [2 tanh(sigma R)],
+  r_s = sqrt((x - v t)^2 + y^2 + z^2). Known properties this platform must
+  reproduce: Eulerian energy density
+  rho = -(1/8pi) v^2 (y^2+z^2)/(4 r_s^2) (df/dr_s)^2 (eq. 19), which is
+  negative in the bubble wall (WEC/NEC violation).
+coordinate_system: cartesian
+dimensions: 4
+coordinates: [t, x, y, z]
+signature: "-+++"
+units:
+  mode: geometrized
+parameters:
+  velocity:
+    symbol: v
+    default: 0.5
+    description: "Bubble coordinate velocity (units of c)."
+  radius:
+    symbol: R
+    default: 1.0
+    description: "Bubble radius."
+    minimum: 0.0
+  wall_steepness:
+    symbol: sigma
+    default: 8.0
+    description: "Wall steepness parameter."
+    minimum: 0.0
+metric:
+  g_00: "-1 + v**2 * ((tanh(sigma*(sqrt((x - v*t)**2 + y**2 + z**2) + R)) - tanh(sigma*(sqrt((x - v*t)**2 + y**2 + z**2) - R)))/(2*tanh(sigma*R)))**2"
+  g_01: "-v * (tanh(sigma*(sqrt((x - v*t)**2 + y**2 + z**2) + R)) - tanh(sigma*(sqrt((x - v*t)**2 + y**2 + z**2) - R)))/(2*tanh(sigma*R))"
+  g_02: "0"
+  g_03: "0"
+  g_11: "1"
+  g_12: "0"
+  g_13: "0"
+  g_22: "1"
+  g_23: "0"
+  g_33: "1"
+assumptions:
+  - "R > 0"
+  - "sigma > 0"
+source_citation: "Alcubierre, 'The warp drive: hyper-fast travel within general relativity', Class. Quantum Grav. 11 (1994) L73-L77."
+author: metric-forge
