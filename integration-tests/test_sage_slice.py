@@ -390,6 +390,47 @@ def test_mid_execute_crash_completes_under_reserved_id(env, monkeypatch):
     assert baseline_ev["source_id"] == reserved
 
 
+def test_concurrent_stepper_blocks_instead_of_duplicating(env, monkeypatch):
+    """S1d in the runtime: a step whose reservation is held waits, not spends.
+
+    Contention is not a scientific failure, so the run blocks (``waiting_for``)
+    rather than transitioning to STOP, and the holder's work stands.
+    """
+    client, tmp_path = env
+    from apps.coordinator import store
+    from forge_domain.entities import new_id
+
+    config_id = _seed_configuration()
+    _designer_script(tmp_path, monkeypatch, config_id)
+    prog = _bootstrap_program(client, config_id)
+    r = client.post(f"/api/v1/sage/programs/{prog['id']}/runs",
+                    headers={"x-idempotency-key": "run-1"})
+    run_id = r.json()["run"]["id"]
+    reserved = new_id()
+
+    # Another stepper is mid-flight on this run's hypothesis reservation.
+    monkeypatch.setenv("FORGE_SAGE_CLAIM_WAIT_S", "0.1")
+    monkeypatch.setenv("FORGE_SAGE_CLAIM_POLL_S", "0.01")
+    held = store.acquire_idempotent(prog["id"], f"run:{run_id}:hypothesis",
+                                    "hypothesis", reserved)
+
+    state = client.post(f"/api/v1/sage/runs/{run_id}/step").json()
+    assert state["waiting_for"] == "concurrent_step"
+    assert state["run"]["state"] == "hypothesize"  # no transition, no STOP
+    assert client.get(
+        f"/api/v1/sage/programs/{prog['id']}/model-runs").json() == []
+    assert client.get(
+        f"/api/v1/sage/programs/{prog['id']}/hypotheses").json() == []
+
+    # Once the holder is gone the step proceeds under the reserved id.
+    store.release_idempotent(held)
+    monkeypatch.delenv("FORGE_SAGE_CLAIM_WAIT_S")
+    state = client.post(f"/api/v1/sage/runs/{run_id}/step").json()
+    assert state["waiting_for"] == "hypothesis_approval"
+    hyps = client.get(f"/api/v1/sage/programs/{prog['id']}/hypotheses").json()
+    assert [h["id"] for h in hyps] == [reserved]
+
+
 def test_level_0_program_cannot_reach_execution(env, monkeypatch):
     client, tmp_path = env
     config_id = _seed_configuration()
