@@ -7,6 +7,8 @@ bundle under EXPERIMENTS_DIR/<experiment-id>/:
     metric.json            full metric definition as loaded
     expressions.json       symbolic results (sympy srepr strings)
     validations.json       known-answer validation results
+    cross_backend.json     independent-backend comparison record (B-2), when
+                           the cross-check ran for this metric
     energy_conditions.json energy-condition report (if a grid was requested)
     arrays/*.npz           grid fields (metric, stress-energy, energy density)
     summary.md             human-readable summary
@@ -40,7 +42,10 @@ from forge_math import compute_geometry
 from forge_math.numeric import build_grid, evaluate_matrix
 from forge_metrics import load_metric_file
 from forge_metrics.loader import ParsedMetric
-from forge_validation import evaluate_energy_conditions, run_validation_suite
+from forge_validation import (
+    CrossBackendVerification, apply_independent_verification,
+    evaluate_energy_conditions, run_cross_backend_check, run_validation_suite,
+)
 from apps.coordinator.provenance import (
     container_image_digest, dependency_versions, file_checksum, source_commit,
 )
@@ -52,6 +57,13 @@ from apps.coordinator.provenance import (
 # (full simplification of their Riemann tensors takes minutes to hours).
 SIMPLIFY_OP_BUDGET = 40
 SOFTWARE_VERSION = "0.2.0"
+
+# Independent cross-backend verification (B-2).  Runs by default only for
+# metrics the coordinate pipeline also fully simplifies — for those it costs
+# well under a second.  Warp metrics are opt-in via FORGE_CROSS_VERIFY=1
+# because the second symbolic path costs tens of seconds there; set
+# FORGE_CROSS_VERIFY=0 to disable it everywhere.
+CROSS_VERIFY_OP_BUDGET = SIMPLIFY_OP_BUDGET
 
 
 def experiments_dir() -> Path:
@@ -74,6 +86,14 @@ def choose_simplify_level(matrix: sp.Matrix) -> tuple[str, bool]:
     return "none", False
 
 
+def cross_verify_enabled(matrix: sp.Matrix) -> bool:
+    """Whether to run the independent backend for this metric."""
+    flag = os.environ.get("FORGE_CROSS_VERIFY")
+    if flag is not None:
+        return flag.strip().lower() not in ("", "0", "false", "no")
+    return _op_count(matrix) <= CROSS_VERIFY_OP_BUDGET
+
+
 def _dump(path: Path, obj) -> str:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(obj, indent=2, default=str))
@@ -90,6 +110,7 @@ class ExperimentRun:
         self.computation_results: list[ComputationResult] = []
         self.validation_results: list[ValidationResult] = []
         self.geometry = None
+        self.cross_backend: CrossBackendVerification | None = None
         self.timings: dict[str, float] = {}
 
 
@@ -156,6 +177,32 @@ def run_symbolic_phase(run: ExperimentRun) -> None:
     t0 = time.monotonic()
     run.validation_results = run_validation_suite(parsed, geo, exp.id, exp.parameter_values)
     run.timings["validation_s"] = time.monotonic() - t0
+
+    # Independent cross-backend verification (B-2).  This is what makes
+    # `independently_verified` mean anything: the same metric is recomputed by
+    # an independently derived orthonormal-frame backend and the two results
+    # are compared quantity by quantity.  Agreement stamps the flag;
+    # disagreement is recorded loudly and stamps nothing.
+    if cross_verify_enabled(parsed.matrix):
+        t0 = time.monotonic()
+        verification = run_cross_backend_check(parsed, geo, exp.id)
+        run.timings["cross_backend_s"] = time.monotonic() - t0
+        run.cross_backend = verification
+        apply_independent_verification(run.validation_results, verification)
+        if verification.error:
+            run.warnings.append(
+                f"cross-backend verification could not run: {verification.error}")
+        elif verification.comparison is not None:
+            comp = verification.comparison
+            if comp.status.value == "disagree":
+                run.warnings.append(
+                    "CROSS-BACKEND DISAGREEMENT — " + comp.epistemic_note)
+            elif comp.status.value != "agree":
+                run.warnings.append(
+                    "cross-backend verification inconclusive — " + comp.epistemic_note)
+        run.checksums["cross_backend.json"] = _dump(
+            run.bundle_dir / "cross_backend.json", verification.to_dict())
+
     run.checksums["validations.json"] = _dump(
         run.bundle_dir / "validations.json",
         [v.model_dump(mode="json") for v in run.validation_results])
