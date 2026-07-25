@@ -119,6 +119,124 @@ def _summary_md(config: MatterConfiguration, analysis: MatterAnalysis) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _observables(a: MatterAnalysis) -> dict[str, float | None]:
+    """The scalar observables a repeat run must reproduce.
+
+    Effects are keyed ``region/effect``; energy-account scalars carry an
+    ``energy_account/`` prefix.  Keys are *not* deduplicated away when a value
+    is ``None`` — "not computable" is itself a result that must reproduce.
+    """
+
+    out: dict[str, float | None] = {
+        f"{e.observation_region_id}/{e.effect}": e.value for e in a.effects}
+    acct = a.energy_account
+    if acct is not None:
+        for field in ("integrated_vacuum_energy_j", "local_min_energy_density_j_m3",
+                      "apparatus_rest_energy_j", "support_energy_j",
+                      "total_system_energy_j"):
+            out[f"energy_account/{field}"] = getattr(acct, field)
+    return out
+
+
+def _finite(x: float) -> bool:
+    return x == x and x not in (float("inf"), float("-inf"))
+
+
+def _json_number(x: float | None) -> float | str | None:
+    """JSON-safe rendering that never *coerces* a non-finite value to null.
+
+    ``store._finite_json`` turns NaN/±Inf into ``None`` for Postgres JSON
+    columns; a comparison report that let that happen would silently erase the
+    very fact it exists to record.  Non-finite values are therefore rendered as
+    their explicit string form (``"nan"``, ``"inf"``, ``"-inf"``).
+    """
+
+    if x is None:
+        return None
+    return x if _finite(x) else repr(x)  # 'nan' | 'inf' | '-inf'
+
+
+class ComparisonError(RuntimeError):
+    """A tolerance comparison could not be performed (never a 'pass')."""
+
+
+def compare_within_tolerance(a: MatterAnalysis, b: MatterAnalysis, *,
+                             relative_tolerance: float,
+                             absolute_tolerance: float) -> dict:
+    """Compare two analyses observable-by-observable within a declared tolerance.
+
+    Returns a JSON-safe report with ``agrees`` (bool) and a per-observable
+    breakdown.  The rules, stated once so they cannot drift:
+
+    * **Structural equality first.**  Funnel ``status``, ``highest_gate_completed``
+      and ``phenotype_hash`` must be identical.  A repeat that ran a different
+      phenotype or stopped at a different gate is not a reproduction, however
+      close its numbers look.
+    * **Same observable set.**  A key present in one run and absent in the
+      other is a mismatch (``missing``), never a skipped comparison.
+    * **Presence must match.**  ``None`` ("not computable") reproduces only as
+      ``None``; ``None`` vs a number is a mismatch.
+    * **Non-finite never agrees.**  NaN or ±Inf on either side is a mismatch
+      (``non_finite``) — NaN is not equal to itself and must never be masked
+      (CLAUDE.md §5.2).
+    * **Finite values** agree when
+      ``|a - b| <= relative_tolerance * max(|a|, |b|) + absolute_tolerance``.
+    * **A vacuous comparison is an error, not a pass.**  Zero comparable
+      observables raises :class:`ComparisonError`.
+    """
+
+    if relative_tolerance < 0 or absolute_tolerance < 0:
+        raise ComparisonError(
+            f"tolerances must be non-negative, got rel={relative_tolerance!r} "
+            f"abs={absolute_tolerance!r}")
+
+    structural: dict[str, dict] = {}
+    for field in ("status", "highest_gate_completed", "phenotype_hash"):
+        av, bv = getattr(a, field), getattr(b, field)
+        structural[field] = {"original": av, "repeat": bv, "equal": av == bv}
+
+    oa, ob = _observables(a), _observables(b)
+    observables: dict[str, dict] = {}
+    for key in sorted(set(oa) | set(ob)):
+        entry: dict = {"original": _json_number(oa.get(key)),
+                       "repeat": _json_number(ob.get(key))}
+        if key not in oa or key not in ob:
+            entry.update(agrees=False, reason="missing",
+                         present_in=("original" if key in oa else "repeat"))
+        elif oa[key] is None or ob[key] is None:
+            same = oa[key] is None and ob[key] is None
+            entry.update(agrees=same,
+                         reason="both_not_computable" if same else "presence_mismatch")
+        elif not _finite(oa[key]) or not _finite(ob[key]):
+            # Never coerced, never interpolated, never treated as equal.
+            entry.update(agrees=False, reason="non_finite")
+        else:
+            diff = abs(oa[key] - ob[key])
+            allowed = relative_tolerance * max(abs(oa[key]), abs(ob[key])) \
+                + absolute_tolerance
+            entry.update(agrees=diff <= allowed, reason="within_tolerance",
+                         absolute_difference=_json_number(diff),
+                         allowed_difference=_json_number(allowed))
+        observables[key] = entry
+
+    if not observables:
+        raise ComparisonError(
+            "no observables to compare — a repeat with nothing to check is "
+            "not evidence of reproducibility")
+
+    mismatches = sorted(k for k, v in observables.items() if not v["agrees"]) \
+        + sorted(f"structural:{k}" for k, v in structural.items() if not v["equal"])
+    return {
+        "tolerance": {"relative": relative_tolerance,
+                      "absolute": absolute_tolerance},
+        "structural": structural,
+        "observables": observables,
+        "compared_observables": len(observables),
+        "mismatches": mismatches,
+        "agrees": not mismatches,
+    }
+
+
 def compare_with_parent(parent: MatterAnalysis, child: MatterAnalysis) -> dict:
     """Effect-by-effect and account-level deltas between two analyses."""
     def effect_map(a: MatterAnalysis) -> dict:
