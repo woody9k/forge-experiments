@@ -1,11 +1,11 @@
 """Geometry-side MCP tools (architecture spec §13): metrics and experiments.
 
 Every tool here is a static binding onto the closed registry in
-``forge_sage.tools``.  ``warp_forge.experiments.create`` is deliberately bound
-to ``submit_geometry_experiment``, which this phase has **not** implemented
-(backlog S-4 remainder) — the call therefore fails loud through ``call_tool``
-with an audited "not available in this phase" error rather than pretending to
-submit anything.
+``forge_sage.tools``.  ``warp_forge.experiments.create`` is bound to
+``submit_geometry_experiment``, which is now wired (S-4 remainder closed): it
+executes through the same ``runner.execute_experiment`` path the REST API
+uses, enforces the program's ``allowed_metric_hashes`` allowlist fail-closed,
+and is audited through ``call_tool`` like every other tool.
 """
 
 from __future__ import annotations
@@ -37,9 +37,11 @@ GEOMETRY_TOOLS: tuple[McpTool, ...] = (
         tool_name="submit_geometry_experiment", role=Role.DESIGNER,
         title="Submit a geometry experiment",
         description=("Submit an approved geometry experiment to Warp Forge. "
-                     "NOT AVAILABLE in this phase: the registry declares the "
-                     "tool but no implementation is wired (backlog S-4 "
-                     "remainder), so this call fails loud and is audited."),
+                     "The metric must be on the program's allowlist "
+                     "(allowed_metric_hashes) — an empty allowlist permits "
+                     "nothing — and the program must be ACTIVE with autonomy "
+                     "level 1 or higher. Results are re-verified by the "
+                     "coordinator before they can support any claim."),
         arguments={
             "metric_hash": {"type": "string",
                             "description": "Content hash of an allowlisted metric."},
