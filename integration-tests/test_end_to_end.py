@@ -50,10 +50,13 @@ def test_minkowski_end_to_end(client, tmp_path):
     exp = client.get(f"/api/v1/experiments/{exp_id}").json()
     assert exp["status"] == "completed", exp.get("error")
 
-    # 4. validations: all five Minkowski identities pass
+    # 4. validations: all five Minkowski identities pass, and each carries a
+    #    real independent-verification flag set by the cross-backend check
+    #    (B-2) rather than the permanent False it used to be
     validations = client.get(f"/api/v1/experiments/{exp_id}/validations").json()
     assert len(validations) == 5
     assert all(v["status"] == "passed" for v in validations)
+    assert all(v["independently_verified"] for v in validations)
 
     # 5. computed tensors persisted with explicit quality labels
     results = client.get(f"/api/v1/experiments/{exp_id}/results").json()
@@ -78,7 +81,14 @@ def test_minkowski_end_to_end(client, tmp_path):
     zpath.write_bytes(resp.content)
     names = set(zipfile.ZipFile(zpath).namelist())
     assert {"manifest.json", "metric.json", "expressions.json",
-            "validations.json", "summary.md"} <= names
+            "validations.json", "cross_backend.json", "summary.md"} <= names
+
+    # 7b. the cross-backend record travels with the bundle and states, in the
+    #     record itself, how independent the second backend actually is
+    xb = json.loads((bundle / "cross_backend.json").read_text())
+    assert xb["comparison"]["status"] == "agree"
+    assert xb["comparison"]["independently_verified"] is True
+    assert "same computer-algebra system" in xb["comparison"]["independence"]
 
     # 8. reproduce: rerun must produce identical spec hash and identical
     #    symbolic + validation artifacts (bit-for-bit)
