@@ -195,6 +195,28 @@ def test_full_vertical_slice_with_restart(env, monkeypatch):
     assert budget["usage"]["model_tokens"] > 0
     assert budget["usage"]["loop_iterations"] == 1
 
+    # The loop's substantive changes were recorded as immutable versions (S-9),
+    # attributed to the loop state or the director that caused each one.
+    history = client.get(f"/api/v1/sage/programs/{prog['id']}/history").json()
+    assert {v["entity_type"] for v in history} == {
+        "program", "hypothesis", "plan", "claim"}
+    for entity_type in ("program", "hypothesis", "plan", "claim"):
+        seq = [v["version"] for v in history if v["entity_type"] == entity_type]
+        assert seq == sorted(seq)          # chronological order is version order
+    hyp_history = [v for v in history if v["entity_type"] == "hypothesis"]
+    assert hyp_history[0]["previous_hash"] is None
+    assert any(a.startswith("director:") for a in
+               (v["actor"] for v in hyp_history))
+    assert any(a.startswith("runtime:") for a in (v["actor"] for v in history))
+    # The plan's approval transition is on the record as its own version.
+    plan_versions = client.get(
+        f"/api/v1/sage/history/plan/{plans[0]['id']}").json()
+    statuses = [client.get(
+        f"/api/v1/sage/history/plan/{plans[0]['id']}/{v['version']}"
+    ).json()["payload"]["status"] for v in plan_versions]
+    assert statuses[0] == "draft" and statuses[-1] == "completed"
+    assert "awaiting_approval" in statuses and "approved" in statuses
+
     # 13-15. "Restart": drop in-process provider state, then replay the step
     # and the reconciler.  Nothing duplicates; terminal state is stable.
     from apps.coordinator import sage_gateway
@@ -203,6 +225,11 @@ def test_full_vertical_slice_with_restart(env, monkeypatch):
     assert replay["run"]["state"] == "promote"
     r = client.post("/api/v1/sage-admin/reconcile")
     assert r.status_code == 200
+
+    # A replay re-saves entities idempotently; identical payloads are not
+    # substantive changes, so the recorded history is byte-for-byte unchanged.
+    assert client.get(
+        f"/api/v1/sage/programs/{prog['id']}/history").json() == history
     assert len(client.get(f"/api/v1/sage/programs/{prog['id']}/claims").json()) == 1
     assert len(client.get(f"/api/v1/sage/programs/{prog['id']}/hypotheses").json()) == 1
     assert len(store.list_matter_configurations()) == 2
