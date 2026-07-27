@@ -253,6 +253,15 @@ def list_campaigns() -> dict:
 
 from forge_sdk import PluginManifest, SimplePlugin  # noqa: E402
 
+
+def _register(registry):
+    from apps.coordinator.sage_tools_matter import TOOLS as _SAGE_TOOLS
+
+    registry.add_api_router(router)
+    for spec, handler in _SAGE_TOOLS:
+        registry.add_sage_tool(spec, handler)
+
+
 plugin = SimplePlugin(
     PluginManifest(
         id="matter",
@@ -268,5 +277,5 @@ plugin = SimplePlugin(
             "(docs/matter-forge-design.md §9).",
         ],
     ),
-    register=lambda registry: registry.add_api_router(router),
+    register=_register,
 )
