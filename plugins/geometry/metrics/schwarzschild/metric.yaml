@@ -33,5 +33,16 @@ assumptions:
   - "M > 0"
   - "r > 2*M"
   - "theta > 0"
+# Exterior region only (r > 2M at the default mass), keeping clear of the
+# r = 2M coordinate singularity and the theta = 0, pi poles where g_33
+# degenerates. A symmetric window straddling the horizon makes numerical
+# sampling (e.g. energy conditions) non-finite at most points.
+default_grid:
+  vary:
+    r: [2.5, 10.0]
+    theta: [0.1, 3.04]
+  fix:
+    t: 0.0
+    phi: 0.0
 source_citation: "Schwarzschild (1916); form as in Misner, Thorne & Wheeler, Gravitation (1973), eq. 23.29; Kretschmann scalar 48 M^2/r^6 e.g. Henry, Astrophys. J. 535 (2000) 350."
 author: metric-forge

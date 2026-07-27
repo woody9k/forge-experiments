@@ -21,5 +21,12 @@ metric:
   g_22: "1"
   g_23: "0"
   g_33: "1"
+default_grid:
+  vary:
+    x: [-2.0, 2.0]
+    y: [-2.0, 2.0]
+  fix:
+    t: 0.0
+    z: 0.0
 source_citation: "Any GR textbook; e.g. Misner, Thorne & Wheeler, Gravitation (1973), ch. 2."
 author: metric-forge

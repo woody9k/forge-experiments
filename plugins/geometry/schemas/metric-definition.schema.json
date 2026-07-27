@@ -65,6 +65,32 @@
       "maxItems": 32,
       "items": { "type": "string", "maxLength": 500 }
     },
+    "default_grid": {
+      "type": "object",
+      "required": ["vary"],
+      "additionalProperties": false,
+      "description": "Sensible default sampling window for this metric: coordinate ranges to vary and slice values for the rest. Guidance for grid selection, not part of the metric's physical identity.",
+      "properties": {
+        "vary": {
+          "type": "object",
+          "minProperties": 1,
+          "maxProperties": 5,
+          "propertyNames": { "pattern": "^[a-zA-Z][a-zA-Z0-9_]{0,15}$" },
+          "additionalProperties": {
+            "type": "array",
+            "items": { "type": "number" },
+            "minItems": 2,
+            "maxItems": 2
+          }
+        },
+        "fix": {
+          "type": "object",
+          "maxProperties": 5,
+          "propertyNames": { "pattern": "^[a-zA-Z][a-zA-Z0-9_]{0,15}$" },
+          "additionalProperties": { "type": "number" }
+        }
+      }
+    },
     "source_citation": { "type": "string", "maxLength": 1000 },
     "author": { "type": "string", "maxLength": 200 }
   }

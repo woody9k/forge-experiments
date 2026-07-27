@@ -17,7 +17,7 @@ import jsonschema
 import sympy as sp
 import yaml
 
-from forge_domain.entities import MetricDefinition, ParameterSpec, UnitsMode
+from forge_domain.entities import DefaultGridSpec, MetricDefinition, ParameterSpec, UnitsMode
 from forge_metrics.parser import RestrictedParseError, parse_expression
 
 _SCHEMA_PATH = Path(__file__).resolve().parents[2] / "schemas" / "metric-definition.schema.json"
@@ -108,6 +108,7 @@ def load_metric_definition(raw: dict) -> ParsedMetric:
         coordinates=coords_names,
         metric_components=raw["metric"],
         assumptions=raw.get("assumptions", []),
+        default_grid=_parse_default_grid(raw.get("default_grid"), coords_names),
         source_citation=raw.get("source_citation", ""),
         author=raw.get("author", ""),
     )
@@ -129,6 +130,34 @@ def load_metric_definition(raw: dict) -> ParsedMetric:
         definition=definition, coords=coords, params=params,
         matrix=matrix, assumptions=assumptions,
     )
+
+
+def _parse_default_grid(raw_grid: dict | None, coords: list[str]) -> DefaultGridSpec | None:
+    """Validate an optional ``default_grid`` block against the coordinate list.
+
+    Every coordinate must appear exactly once, either varied or fixed, so the
+    block always describes a complete, unambiguous grid.
+    """
+    if raw_grid is None:
+        return None
+    vary = raw_grid.get("vary", {})
+    fix = raw_grid.get("fix", {})
+    unknown = (set(vary) | set(fix)) - set(coords)
+    if unknown:
+        raise MetricLoadError(f"default_grid references unknown coordinates: {sorted(unknown)}")
+    overlap = set(vary) & set(fix)
+    if overlap:
+        raise MetricLoadError(
+            f"default_grid lists coordinates as both vary and fix: {sorted(overlap)}")
+    missing = set(coords) - set(vary) - set(fix)
+    if missing:
+        raise MetricLoadError(
+            f"default_grid must cover every coordinate; missing: {sorted(missing)}")
+    for c, (lo, hi) in vary.items():
+        if not lo < hi:
+            raise MetricLoadError(
+                f"default_grid range for {c} must have min < max, got [{lo}, {hi}]")
+    return DefaultGridSpec(vary=vary, fix=fix)
 
 
 def _build_matrix(components: dict[str, str], dim: int, symbols: dict[str, sp.Symbol]) -> sp.Matrix:

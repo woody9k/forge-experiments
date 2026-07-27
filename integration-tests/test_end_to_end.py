@@ -151,3 +151,33 @@ def test_energy_condition_endpoint_on_alcubierre(client, tmp_path):
     assert field["resolution"] == [16, 16]
     flat = [v for row in field["values"] for v in row if v is not None]
     assert min(flat) < 0  # negative energy visible in the heatmap data
+
+
+def test_schwarzschild_default_grid_gives_clean_energy_conditions(client, tmp_path):
+    # The library advertises a per-metric default grid (exterior region only;
+    # the old metric-agnostic -2:2 default straddled the horizon and negative
+    # radius, so sampling was mostly non-finite and reported inconclusive).
+    metrics = client.get("/api/v1/metrics").json()
+    sch = next(m for m in metrics if m["name"] == "schwarzschild")
+    dg = sch["default_grid"]
+    assert dg is not None
+    assert dg["vary"]["r"][0] > 2.0  # exterior at the default mass M=1
+
+    # Submit exactly what the experiment builder would submit from those
+    # defaults: vacuum spacetime, so every condition must come back clean.
+    resp = client.post("/api/v1/experiments", json={
+        "metric_name": "schwarzschild",
+        "grid": {"bounds": dg["vary"],
+                 "resolution": {c: 8 for c in dg["vary"]},
+                 "slice_values": dg["fix"]},
+        "energy_conditions": {"conditions": ["NEC", "WEC", "SEC", "DEC"],
+                              "sample_points": 64},
+    })
+    assert resp.status_code == 202, resp.text
+    exp_id = resp.json()["id"]
+    exp = client.get(f"/api/v1/experiments/{exp_id}").json()
+    assert exp["status"] == "completed", exp.get("error")
+
+    ec = json.loads((tmp_path / "experiments" / exp_id / "energy_conditions.json").read_text())
+    for cond in ("NEC", "WEC", "SEC", "DEC"):
+        assert ec[cond]["status"] == "no_violation_detected", ec[cond]

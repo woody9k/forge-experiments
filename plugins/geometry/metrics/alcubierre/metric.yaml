@@ -43,5 +43,14 @@ metric:
 assumptions:
   - "R > 0"
   - "sigma > 0"
+# Symmetric window through the bubble: covers the wall at r_s = R = 1 on
+# the t = 0, z = 0 slice, where the published negative-energy shell lives.
+default_grid:
+  vary:
+    x: [-2.0, 2.0]
+    y: [-2.0, 2.0]
+  fix:
+    t: 0.0
+    z: 0.0
 source_citation: "Alcubierre, 'The warp drive: hyper-fast travel within general relativity', Class. Quantum Grav. 11 (1994) L73-L77."
 author: metric-forge
