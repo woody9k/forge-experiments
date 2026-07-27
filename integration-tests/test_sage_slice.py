@@ -243,6 +243,27 @@ def test_full_vertical_slice_with_restart(env, monkeypatch):
                      "skeptic"]
 
 
+def test_default_canned_designer_reaches_the_plan_gate(env):
+    """Regression: with no FORGE_SAGE_MOCK_SCRIPT (the default stack), the
+    canned designer must adopt the program's allowlisted configuration so the
+    plan materializes — not dead-end on a missing configuration_id."""
+    client, _ = env
+    config_id = _seed_configuration()
+    prog = _bootstrap_program(client, config_id)
+    state = _start_and_step(client, prog["id"])
+    run_id = state["run"]["id"]
+    assert state["waiting_for"] == "hypothesis_approval"
+    hyp = client.get(f"/api/v1/sage/programs/{prog['id']}/hypotheses").json()[0]
+    client.post(f"/api/v1/sage-admin/hypotheses/{hyp['id']}/review", json=ADMIN)
+
+    state = client.post(f"/api/v1/sage/runs/{run_id}/step").json()
+    assert state["waiting_for"] == "human_approval", state["run"].get("stop_reason")
+    plans = client.get(f"/api/v1/sage/programs/{prog['id']}/plans").json()
+    assert len(plans) == 1
+    assert [s["configuration_id"] for s in plans[0]["experiment_specs"]] == \
+        [config_id, config_id]
+
+
 def test_changed_plan_hash_invalidates_approval(env, monkeypatch):
     client, tmp_path = env
     from apps.coordinator import store
