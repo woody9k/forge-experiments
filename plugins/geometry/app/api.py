@@ -236,10 +236,13 @@ from forge_sdk import PluginManifest, SimplePlugin  # noqa: E402
 
 def _register(registry):
     from apps.coordinator.sage_tools_geometry import TOOLS as _SAGE_TOOLS
+    from forge_geometry.selftests import SUITES as _SELFTEST_SUITES
 
     registry.add_api_router(router)
     for spec, handler in _SAGE_TOOLS:
         registry.add_sage_tool(spec, handler)
+    for suite in _SELFTEST_SUITES:
+        registry.add_selftest_suite(suite)
 
 
 plugin = SimplePlugin(
