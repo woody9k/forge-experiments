@@ -14,7 +14,7 @@ from pathlib import Path
 from apps.coordinator.provenance import (
     container_image_digest, dependency_versions, file_checksum, source_commit,
 )
-from apps.coordinator.runner import experiments_dir
+from apps.coordinator.bundles import experiments_dir
 from forge_matter.compiler import compile_configuration
 from forge_matter.entities import MatterAnalysis, MatterConfiguration
 from forge_matter.funnel import FUNNEL_VERSION, run_funnel

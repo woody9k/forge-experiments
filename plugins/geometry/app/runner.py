@@ -24,10 +24,8 @@ deferred — recorded in the manifest as `simplify_level`.
 
 from __future__ import annotations
 
-import json
 import os
 import time
-import zipfile
 from dataclasses import asdict
 from pathlib import Path
 
@@ -46,9 +44,18 @@ from forge_validation import (
     CrossBackendVerification, apply_independent_verification,
     evaluate_energy_conditions, run_cross_backend_check, run_validation_suite,
 )
+from apps.coordinator.bundles import (
+    checksummed_dump as _dump, experiments_dir, export_bundle_zip,
+)
 from apps.coordinator.provenance import (
     container_image_digest, dependency_versions, file_checksum, source_commit,
 )
+
+# _compat_ note (platform-split Phase 2): experiments_dir and
+# export_bundle_zip moved to apps.coordinator.bundles (core artifact
+# machinery); they are re-imported above because callers historically import
+# them from here.  This module is otherwise the geometry pipeline stage,
+# destined for the geometry plugin.
 
 # Metrics at or below this SymPy op count get full simplification plus a
 # Kretschmann scalar; anything larger runs unsimplified with Kretschmann
@@ -64,12 +71,6 @@ SOFTWARE_VERSION = "0.2.0"
 # because the second symbolic path costs tens of seconds there; set
 # FORGE_CROSS_VERIFY=0 to disable it everywhere.
 CROSS_VERIFY_OP_BUDGET = SIMPLIFY_OP_BUDGET
-
-
-def experiments_dir() -> Path:
-    d = Path(os.environ.get("EXPERIMENTS_DIR", Path(__file__).resolve().parents[2] / "experiments"))
-    d.mkdir(parents=True, exist_ok=True)
-    return d
 
 
 def metrics_dir() -> Path:
@@ -92,12 +93,6 @@ def cross_verify_enabled(matrix: sp.Matrix) -> bool:
     if flag is not None:
         return flag.strip().lower() not in ("", "0", "false", "no")
     return _op_count(matrix) <= CROSS_VERIFY_OP_BUDGET
-
-
-def _dump(path: Path, obj) -> str:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(obj, indent=2, default=str))
-    return file_checksum(path)
 
 
 class ExperimentRun:
@@ -338,13 +333,3 @@ def execute_experiment(experiment: Experiment) -> tuple[ExperimentRun, dict]:
     return run, manifest
 
 
-def export_bundle_zip(experiment_id: str) -> Path:
-    bundle_dir = experiments_dir() / experiment_id
-    if not (bundle_dir / "manifest.json").exists():
-        raise FileNotFoundError(f"no bundle for experiment {experiment_id}")
-    zip_path = bundle_dir / f"bundle-{experiment_id}.zip"
-    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
-        for p in sorted(bundle_dir.rglob("*")):
-            if p.is_file() and p != zip_path:
-                zf.write(p, p.relative_to(bundle_dir))
-    return zip_path
