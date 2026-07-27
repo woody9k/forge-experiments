@@ -245,3 +245,28 @@ def create_campaign(spec: dict) -> dict:
 def list_campaigns() -> dict:
     return {"campaigns": [], "execution_available": False,
             "gated_on": SEARCH_GATING}
+
+
+# --------------------------------------------------------------- plugin decl
+# In-repo plugin registration (platform-split Phase 2).  Destined to become a
+# forge.plugins entry point in the forge-experiments repo.
+
+from forge_sdk import PluginManifest, SimplePlugin  # noqa: E402
+
+plugin = SimplePlugin(
+    PluginManifest(
+        id="matter",
+        display_name="Matter Forge",
+        version="0.4.0",
+        description="Physically parameterized matter configurations: "
+                    "genome→phenotype compilation, Casimir and classical "
+                    "models, mutation and lineage.",
+        compatible_forge=">=0.4,<0.5",
+        safety_policies=[
+            "Campaign execution (POST /api/v1/matter/campaigns) returns 501 "
+            "until gates B-2, B-5, B-7, B-13, B-18 close "
+            "(docs/matter-forge-design.md §9).",
+        ],
+    ),
+    register=lambda registry: registry.add_api_router(router),
+)

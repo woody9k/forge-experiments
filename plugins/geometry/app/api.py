@@ -224,3 +224,23 @@ def export_experiment(experiment_id: str) -> FileResponse:
     except FileNotFoundError as exc:
         raise HTTPException(404, str(exc)) from exc
     return FileResponse(zip_path, filename=zip_path.name, media_type="application/zip")
+
+
+# --------------------------------------------------------------- plugin decl
+# In-repo plugin registration (platform-split Phase 2).  When the geometry
+# domain moves to forge-experiments this becomes a forge.plugins entry point
+# in that repo's dist; the manifest and hook stay exactly this shape.
+
+from forge_sdk import PluginManifest, SimplePlugin  # noqa: E402
+
+plugin = SimplePlugin(
+    PluginManifest(
+        id="geometry",
+        display_name="Spacetime Geometry (Metric Forge)",
+        version="0.4.0",
+        description="Trusted metric library, symbolic tensor-pipeline "
+                    "experiments, and energy-condition validation.",
+        compatible_forge=">=0.4,<0.5",
+    ),
+    register=lambda registry: registry.add_api_router(router),
+)
