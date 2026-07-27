@@ -5,15 +5,32 @@ Every tool here is a static binding onto the closed registry in
 ``submit_geometry_experiment``, which is now wired (S-4 remainder closed): it
 executes through the same ``runner.execute_experiment`` path the REST API
 uses, enforces the program's ``allowed_metric_hashes`` allowlist fail-closed,
-and is audited through ``call_tool`` like every other tool.
+and is audited through ``call_tool`` like every other tool.  It is the one
+write on this surface, so — like the matter writes — it reserves the
+experiment id in the idempotency ledger before the side effect rather than
+letting a client name it.
 """
 
 from __future__ import annotations
 
-from apps.mcp._core import McpTool, registry_tool
+from apps.coordinator import store
+from apps.mcp._core import McpTool, Reservation, registry_tool
 from forge_sage import Role
 
 _EXPERIMENT_ID = {"type": "string", "description": "Experiment id."}
+
+
+def _load_experiment(experiment_id: str) -> dict | None:
+    """Replay lookup for the reservation.
+
+    ``store.load_experiment`` returns the entity; the ledger only needs to know
+    whether a prior attempt under this key finished, so hand back a plain dict
+    like every other reservation loader.
+    """
+
+    experiment = store.load_experiment(experiment_id)
+    return experiment.model_dump(mode="json") if experiment is not None else None
+
 
 GEOMETRY_TOOLS: tuple[McpTool, ...] = (
     registry_tool(
@@ -36,18 +53,35 @@ GEOMETRY_TOOLS: tuple[McpTool, ...] = (
         "warp_forge.experiments.create",
         tool_name="submit_geometry_experiment", role=Role.DESIGNER,
         title="Submit a geometry experiment",
-        description=("Submit an approved geometry experiment to Warp Forge. "
-                     "The metric must be on the program's allowlist "
-                     "(allowed_metric_hashes) — an empty allowlist permits "
-                     "nothing — and the program must be ACTIVE with autonomy "
-                     "level 1 or higher. Results are re-verified by the "
-                     "coordinator before they can support any claim."),
+        description=("Submit an approved geometry experiment to Warp Forge. It "
+                     "runs through the same pipeline as "
+                     "POST /api/v1/experiments. The metric must be on the "
+                     "program's allowlist (allowed_metric_hashes) — an empty "
+                     "allowlist permits nothing — and the program must be "
+                     "ACTIVE with autonomy level 1 or higher. Takes the "
+                     "metric's content hash plus optional parameters, grid, "
+                     "energy_conditions, and seed. The call is audited, and "
+                     "the resulting bundle is re-verified by the coordinator "
+                     "before it can support any claim."),
         arguments={
             "metric_hash": {"type": "string",
                             "description": "Content hash of an allowlisted metric."},
             "parameters": {"type": "object",
                            "description": "Metric parameter assignments."},
+            "grid": {"type": "object",
+                     "description": ("Optional numeric grid specification "
+                                     "(GridSpec); omit for the metric default.")},
+            "energy_conditions": {
+                "type": "object",
+                "description": ("Optional energy-condition configuration "
+                                "(EnergyConditionConfig); omit for the default.")},
+            "seed": {"type": "integer",
+                     "description": "Deterministic experiment seed (default 0)."},
         },
+        required=("metric_hash",),
+        reservation=Reservation(
+            argument="experiment_id", object_type="experiment",
+            result_key="experiment_id", loader=_load_experiment),
     ),
     registry_tool(
         "warp_forge.experiments.get",
