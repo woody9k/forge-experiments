@@ -3,6 +3,47 @@
 // the matter plugin in forge-experiments.
 
 // ----------------------------------------------------------------- matter
+// The plugin owns its markup as well as its behaviour: the shell's
+// index.html has no matter elements, so installing or removing this plugin
+// is what puts the section on the page or takes it away.
+const MATTER_MARKUP = `
+    <section class="xsection" id="xsec-matter">
+      <h2>Matter Configurations</h2>
+      <p class="viz-meta">Start from real matter — predict its effect on
+        spacetime. Physically parameterized configurations → stress-energy →
+        predicted effects. Gates 0–2 (schema, engineering, fast physics) are
+        live; gates 3–5 and search campaigns are explicitly gated — see
+        docs/matter-forge-design.md.</p>
+      <div class="subnav tabstrip" data-group="matter">
+        <button data-pane="configurations" class="active">Configurations</button>
+        <button data-pane="casimir">Casimir Tool</button>
+      </div>
+
+      <div class="pane" data-group="matter" id="pane-matter-configurations">
+        <button id="mc-demo">Create demo plate stack</button>
+        <table id="mc-list"><thead>
+          <tr><th>id</th><th>name</th><th>gen</th><th>state</th><th>actions</th></tr>
+        </thead><tbody></tbody></table>
+        <div id="mc-detail"></div>
+      </div>
+
+      <div class="pane hidden" data-group="matter" id="pane-matter-casimir">
+        <h3>Casimir analyzer (ideal parallel plates, T = 0)</h3>
+        <form id="casimir-form">
+          <label>Separation (m) <input id="cz-sep" type="text" value="1e-7"></label>
+          <label>Plate area (m²) <input id="cz-area" type="text" value="1e-4"></label>
+          <label>Plates <input id="cz-count" type="number" value="2" min="2"></label>
+          <label>Temperature (K) <input id="cz-temp" type="text" value="0"></label>
+          <button type="submit">Analyze</button>
+        </form>
+        <div id="cz-result"></div>
+      </div>
+    </section>
+`;
+
+document.getElementById("view-experiments")
+  .insertAdjacentHTML("beforeend", MATTER_MARKUP);
+
 const DEMO_GENOME = {
   name: "casimir_stack", version: "0.1.0",
   coordinate_system: { type: "cartesian", units: "SI" },
@@ -117,6 +158,7 @@ async function loadMatter() {
          <button onclick="mcDetail('${c.id}')">detail</button></td></tr>`).join("");
 }
 window.mcSimulate = mcSimulate; window.mcMutate = mcMutate; window.mcDetail = mcDetail;
+
 
 
 ForgeUI.registerSection({
