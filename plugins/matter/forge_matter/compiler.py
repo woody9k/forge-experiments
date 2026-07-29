@@ -25,7 +25,7 @@ import yaml
 from forge_domain.entities import content_hash
 from forge_matter import materials
 from forge_matter.entities import MatterConfiguration
-from forge_metrics.parser import RestrictedParseError, parse_expression
+from forge_sdk.expressions import RestrictedParseError, parse_expression
 
 COMPILER_VERSION = "0.1.0"
 C_LIGHT = 299_792_458.0
