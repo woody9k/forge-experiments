@@ -236,6 +236,7 @@ from forge_sdk import PluginManifest, SimplePlugin  # noqa: E402
 
 def _register(registry):
     from apps.coordinator.queue_tasks_geometry import TASK_TYPES as _TASK_TYPES
+    from apps.coordinator.store_geometry import GeometryBase
     from apps.coordinator.sage_tools_geometry import TOOLS as _SAGE_TOOLS
     from forge_geometry.selftests import SUITES as _SELFTEST_SUITES
 
@@ -246,6 +247,7 @@ def _register(registry):
         registry.add_selftest_suite(suite)
     for task_type in _TASK_TYPES:
         registry.add_task_type(task_type)
+    registry.add_persistence_metadata(GeometryBase.metadata)
 
 
 plugin = SimplePlugin(

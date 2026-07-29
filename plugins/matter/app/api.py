@@ -256,10 +256,12 @@ from forge_sdk import PluginManifest, SimplePlugin  # noqa: E402
 
 def _register(registry):
     from apps.coordinator.sage_tools_matter import TOOLS as _SAGE_TOOLS
+    from apps.coordinator.store_matter import MatterBase
 
     registry.add_api_router(router)
     for spec, handler in _SAGE_TOOLS:
         registry.add_sage_tool(spec, handler)
+    registry.add_persistence_metadata(MatterBase.metadata)
 
 
 plugin = SimplePlugin(
