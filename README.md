@@ -25,14 +25,24 @@ integration-tests/   cross-plugin + governed-loop (§21) integration tests
 docs/                plugin design docs (authoring guide lands here)
 ```
 
-## Status: extraction complete, wiring in progress
+## Status: wired and proven; awaiting the platform cutover
 
-This repository was extracted from the platform monorepo with
-`git filter-repo`, so file history and blame travel with the code. The
-**platform monorepo remains the working system**: module import paths in
-this tree still reference their monorepo locations (`apps.coordinator.*`,
-`forge_metrics`, …) and are rewired by the Phase 3 wiring PRs, which also
-add packaging (`forge-experiments` dist consuming the platform's
-`forge-platform`/`forge-sdk` dists), `forge.plugins` entry points, and CI.
-Until the platform-side cutover PR removes the moved code there, treat this
-tree as read-mostly.
+Extracted from the platform monorepo with `git filter-repo` (history and
+blame travel with the code), then wired into two real plugins:
+
+* `forge-experiments` is an installable distribution depending on
+  `forge-platform>=0.4,<0.5`, declaring both plugins as `forge.plugins`
+  entry points — the platform registers nothing about them.
+* Domain data (bundled metrics, JSON Schemas, SAGE packs) ships as plugin
+  package data, so it resolves identically from a checkout and a wheel.
+
+**Verified end to end against a platform installed without any domain
+packages**: both plugins activate through entry-point discovery alone, a
+Schwarzschild experiment runs to 5/5 passing validations with visualization
+data, the matter path serves and simulates, and **112 plugin tests pass**.
+
+**Not yet complete**: the platform still reaches domain rows through
+compatibility shims that vanish when the domains leave it, so part of the
+governed-loop integration suite fails until the platform's cutover PR
+lands. Exactly what that PR must change — with the failure inventory — is
+in [docs/cross-repo-contract.md](docs/cross-repo-contract.md).

@@ -13,6 +13,22 @@ deterministic mock model:
 
 from __future__ import annotations
 
+
+def _reloadable(module_name: str) -> bool:
+    """Modules a fresh-environment fixture must drop.
+
+    The platform's app layer *and* the plugin app layers: plugin modules
+    bind platform services (store session, bundle paths) at import time, so
+    dropping only ``apps.*`` leaves plugin modules pointing at the previous
+    test's engine — which is silent cross-test contamination, not an error.
+    """
+    return (module_name.startswith("apps.")
+            or module_name.startswith("forge_geometry.app")
+            or module_name.startswith("forge_matter.app"))
+
+
+import forge_matter.app.store as mstore  # platform-split: matter rows are plugin-owned
+
 import json
 import sys
 
@@ -43,7 +59,7 @@ def env(tmp_path, monkeypatch):
     monkeypatch.setenv("FORGE_DATA_DIR", str(tmp_path / "data"))
     monkeypatch.setenv("FORGE_SAGE_PROVIDER", "mock")
     monkeypatch.delenv("FORGE_SAGE_MOCK_SCRIPT", raising=False)
-    for mod in [m for m in list(sys.modules) if m.startswith("apps.")]:
+    for mod in [m for m in list(sys.modules) if _reloadable(m)]:
         del sys.modules[mod]
     from fastapi.testclient import TestClient
     from apps.api.main import app
@@ -56,7 +72,7 @@ def _seed_configuration() -> str:
     from apps.coordinator import store
     from forge_matter.compiler import load_configuration
     config = load_configuration(CASIMIR_GENOME)
-    store.save_matter_configuration(config)
+    mstore.save_matter_configuration(config)
     return config.id
 
 
@@ -156,7 +172,7 @@ def test_full_vertical_slice_with_restart(env, monkeypatch):
 
     # Exactly two configurations exist: the trusted baseline and the one
     # mutated child SAGE created through the real funnel path.
-    configs = store.list_matter_configurations()
+    configs = mstore.list_matter_configurations()
     assert len(configs) == 2  # baseline + mutated child, nothing else
     child = [c for c in configs if c["generation"] == 1][0]
     assert child["parent_ids"] == [config_id]
@@ -232,7 +248,7 @@ def test_full_vertical_slice_with_restart(env, monkeypatch):
         f"/api/v1/sage/programs/{prog['id']}/history").json() == history
     assert len(client.get(f"/api/v1/sage/programs/{prog['id']}/claims").json()) == 1
     assert len(client.get(f"/api/v1/sage/programs/{prog['id']}/hypotheses").json()) == 1
-    assert len(store.list_matter_configurations()) == 2
+    assert len(mstore.list_matter_configurations()) == 2
     runs = client.get(f"/api/v1/sage/programs/{prog['id']}/runs").json()
     assert len(runs) == 1
 
@@ -319,8 +335,8 @@ def test_skeptic_veto_stops_run_and_supersedes_plan(env, monkeypatch):
     critiques = client.get(f"/api/v1/sage/programs/{prog['id']}/critiques").json()
     assert critiques[0]["severity"] == "veto"
     from apps.coordinator import store
-    assert store.list_matter_configurations() != []  # baseline config exists
-    assert len(store.list_matter_configurations()) == 1  # but no child was made
+    assert mstore.list_matter_configurations() != []  # baseline config exists
+    assert len(mstore.list_matter_configurations()) == 1  # but no child was made
 
 
 def test_crash_resume_cannot_bypass_plan_veto(env, monkeypatch):
@@ -395,14 +411,14 @@ def test_mid_execute_crash_completes_under_reserved_id(env, monkeypatch):
     reserved = new_id()
     store.record_idempotent(prog["id"], f"plan:{plan['id']}:analysis:baseline",
                             "matter_analysis", reserved)
-    assert store.load_matter_analysis(reserved) is None  # nothing ran yet
+    assert mstore.load_matter_analysis(reserved) is None  # nothing ran yet
 
     # Resume: execution completes under the reserved id; exactly two analyses.
     state = client.post(f"/api/v1/sage/runs/{run_id}/step").json()
     assert state["run"]["state"] == "promote", state
-    assert store.load_matter_analysis(reserved) is not None
-    assert store.load_matter_analysis(reserved)["status"] == "completed"
-    assert len(store.list_matter_configurations()) == 2  # baseline + one child
+    assert mstore.load_matter_analysis(reserved) is not None
+    assert mstore.load_matter_analysis(reserved)["status"] == "completed"
+    assert len(mstore.list_matter_configurations()) == 2  # baseline + one child
     # The claim's baseline evidence cites the reserved id.
     claim = client.get(f"/api/v1/sage/programs/{prog['id']}/claims").json()[0]
     detail = client.get(f"/api/v1/sage/claims/{claim['id']}").json()
@@ -467,7 +483,7 @@ def test_level_0_program_cannot_reach_execution(env, monkeypatch):
     assert state["run"]["state"] == "stop"
     assert "cannot submit" in state["run"]["stop_reason"]
     from apps.coordinator import store
-    assert len(store.list_matter_configurations()) == 1  # nothing executed
+    assert len(mstore.list_matter_configurations()) == 1  # nothing executed
 
 
 def test_paused_program_blocks_immediately(env, monkeypatch):

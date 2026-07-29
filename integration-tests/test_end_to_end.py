@@ -1,3 +1,17 @@
+
+
+def _reloadable(module_name: str) -> bool:
+    """Modules a fresh-environment fixture must drop.
+
+    The platform's app layer *and* the plugin app layers: plugin modules
+    bind platform services (store session, bundle paths) at import time, so
+    dropping only ``apps.*`` leaves plugin modules pointing at the previous
+    test's engine — which is silent cross-test contamination, not an error.
+    """
+    return (module_name.startswith("apps.")
+            or module_name.startswith("forge_geometry.app")
+            or module_name.startswith("forge_matter.app"))
+
 """End-to-end Minkowski path (section 25 of the build spec):
 
 define a metric → compute tensors → persist the experiment → validate the
@@ -14,8 +28,9 @@ from pathlib import Path
 
 import pytest
 
-REPO = Path(__file__).resolve().parents[2]
-sys.path.insert(0, str(REPO))
+# The platform is an installed distribution here (forge-platform); no path
+# manipulation is needed or wanted — importing apps.* from a sibling tree
+# would test something other than what ships.
 
 
 @pytest.fixture()
@@ -23,7 +38,7 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setenv("FORGE_EAGER", "1")
     monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path}/forge-test.db")
     monkeypatch.setenv("EXPERIMENTS_DIR", str(tmp_path / "experiments"))
-    for mod in [m for m in list(sys.modules) if m.startswith("apps.")]:
+    for mod in [m for m in list(sys.modules) if _reloadable(m)]:
         del sys.modules[mod]
     from fastapi.testclient import TestClient
     from apps.api.main import app

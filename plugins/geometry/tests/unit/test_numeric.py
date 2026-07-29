@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 import sympy as sp
 
-from forge_domain.entities import GridSpec
+from forge_geometry.entities import GridSpec
 from forge_math.numeric import GridEvaluationError, build_grid, evaluate_on_grid
 from forge_metrics import builtin_metrics, load_metric_file
 
