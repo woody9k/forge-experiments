@@ -9,6 +9,7 @@ plugin registers with does not depend on which repository it lives in.
 from __future__ import annotations
 
 from importlib import resources
+from pathlib import Path
 
 from forge_sdk import PluginManifest, SagePack, SimplePlugin
 
@@ -34,6 +35,17 @@ def _register(registry) -> None:
         registry.add_task_type(task_type)
     registry.add_persistence_metadata(GeometryBase.metadata)
     registry.add_sage_pack(_pack())
+
+    def _mcp_tools():
+        # Lazy: MCP tools bind SAGE tool names, which exist only after every
+        # plugin has registered and the allowlist sync has run.
+        from forge_geometry.app.mcp_tools import GEOMETRY_TOOLS
+
+        return GEOMETRY_TOOLS
+
+    registry.add_mcp_tools(_mcp_tools)
+    registry.add_ui_module(
+        Path(str(resources.files("forge_geometry") / "ui" / "geometry.js")), "geometry.js")
 
 
 plugin = SimplePlugin(

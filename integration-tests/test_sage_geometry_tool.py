@@ -19,6 +19,26 @@ properties under test are about the submission path, not the physics.
 from __future__ import annotations
 
 
+def gstore():
+    """Geometry persistence, resolved on each call.
+
+    These suites purge plugin app modules between tests to get a fresh
+    engine; a module bound at import time would keep writing to the
+    previous test's database.
+    """
+    import importlib
+
+    return importlib.import_module("forge_geometry.app.store")
+
+
+def mstore():
+    """Matter persistence, resolved on each call (see gstore)."""
+    import importlib
+
+    return importlib.import_module("forge_matter.app.store")
+
+
+
 def _reloadable(module_name: str) -> bool:
     """Modules a fresh-environment fixture must drop.
 
@@ -32,7 +52,6 @@ def _reloadable(module_name: str) -> bool:
             or module_name.startswith("forge_matter.app"))
 
 
-import forge_geometry.app.store as gstore  # platform-split: geometry rows are plugin-owned
 
 import sys
 
@@ -88,13 +107,13 @@ def test_allowlisted_metric_submits_and_is_audited(env):
     result = _submit(tools, prog, metric_name="minkowski")
 
     assert result["status"] == "completed"
-    experiment = gstore.load_experiment(result["experiment_id"])
+    experiment = gstore().load_experiment(result["experiment_id"])
     assert experiment is not None
     assert experiment.metric_hash == _metric_hash()
     assert experiment.status.value == "completed"
     # It went through the real pipeline: results and validations were persisted.
-    assert gstore.experiment_results(experiment.id)
-    assert gstore.experiment_validations(experiment.id)
+    assert gstore().experiment_results(experiment.id)
+    assert gstore().experiment_validations(experiment.id)
     # The reported summary comes from the re-read manifest, not from the caller.
     assert result["validation_summary"]["failed"] == 0
 
@@ -110,7 +129,7 @@ def test_metric_may_be_addressed_by_content_hash(env):
     digest = _metric_hash()
     prog = _program(store, allowed=[digest])
     result = _submit(tools, prog, metric_hash=digest)
-    assert gstore.load_experiment(result["experiment_id"]).metric_name == "minkowski"
+    assert gstore().load_experiment(result["experiment_id"]).metric_name == "minkowski"
 
 
 # --------------------------------------------------------------- fail closed
@@ -123,7 +142,7 @@ def test_non_allowlisted_metric_is_refused_and_audited(env):
     with pytest.raises(tools.ToolExecutionError, match="not allowlisted"):
         _submit(tools, prog, metric_name="schwarzschild")
 
-    assert gstore.list_experiments() == []
+    assert gstore().list_experiments() == []
     rows = _audit(store, prog)
     assert len(rows) == 1 and rows[0]["detail"]["outcome"] == "error"
 
@@ -134,7 +153,7 @@ def test_empty_allowlist_permits_nothing(env):
     for name in ("minkowski", "schwarzschild", "alcubierre", "natario"):
         with pytest.raises(tools.ToolExecutionError, match="not allowlisted"):
             _submit(tools, prog, metric_name=name)
-    assert gstore.list_experiments() == []
+    assert gstore().list_experiments() == []
     assert len(_audit(store, prog)) == 4  # every refusal is on the record
 
 
@@ -148,7 +167,7 @@ def test_unknown_metric_and_missing_selector_fail_loud(env):
     with pytest.raises(tools.ToolExecutionError, match="unknown parameters"):
         _submit(tools, prog, metric_name="minkowski",
                 parameter_values={"not_a_parameter": 1.0})
-    assert gstore.list_experiments() == []
+    assert gstore().list_experiments() == []
 
 
 def test_advisory_program_cannot_submit_geometry(env):
@@ -158,7 +177,7 @@ def test_advisory_program_cannot_submit_geometry(env):
     prog = _program(store, allowed=[_metric_hash()], level=0)
     with pytest.raises(PolicyDenied):
         _submit(tools, prog, metric_name="minkowski")
-    assert gstore.list_experiments() == []
+    assert gstore().list_experiments() == []
     assert _audit(store, prog)[0]["allowed"] is False
 
 
@@ -176,12 +195,12 @@ def test_reserved_id_completes_after_a_simulated_crash(env):
     reserved = new_id()
     store.record_idempotent(prog.id, f"plan:{plan_id}:experiment:baseline",
                             "experiment", reserved)
-    assert gstore.load_experiment(reserved) is None
+    assert gstore().load_experiment(reserved) is None
 
     result = _submit(tools, prog, metric_name="minkowski",
                      experiment_id=reserved)
     assert result["experiment_id"] == reserved
-    assert len(gstore.list_experiments()) == 1  # completed, never duplicated
+    assert len(gstore().list_experiments()) == 1  # completed, never duplicated
 
     # And the coordinator can now prove ownership of it from the ledger alone.
     verified = evidence.verify_geometry_experiment(
@@ -201,7 +220,7 @@ def test_malformed_reserved_id_is_refused(env):
 
 def test_evidence_verification_rejects_unowned_and_tampered_bundles(env):
     store, tools, evidence, _ = env
-    from apps.coordinator.runner import experiments_dir
+    from apps.coordinator.bundles import experiments_dir
     from forge_domain.entities import new_id
     prog = _program(store, allowed=[_metric_hash()])
     plan_id = new_id()

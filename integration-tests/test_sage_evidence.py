@@ -7,6 +7,26 @@ these tests prove tampered, foreign, and fabricated evidence all fail loudly.
 from __future__ import annotations
 
 
+def gstore():
+    """Geometry persistence, resolved on each call.
+
+    These suites purge plugin app modules between tests to get a fresh
+    engine; a module bound at import time would keep writing to the
+    previous test's database.
+    """
+    import importlib
+
+    return importlib.import_module("forge_geometry.app.store")
+
+
+def mstore():
+    """Matter persistence, resolved on each call (see gstore)."""
+    import importlib
+
+    return importlib.import_module("forge_matter.app.store")
+
+
+
 def _reloadable(module_name: str) -> bool:
     """Modules a fresh-environment fixture must drop.
 
@@ -20,7 +40,6 @@ def _reloadable(module_name: str) -> bool:
             or module_name.startswith("forge_matter.app"))
 
 
-import forge_matter.app.store as mstore  # platform-split: matter rows are plugin-owned
 
 import sys
 
@@ -41,12 +60,12 @@ def env(tmp_path, monkeypatch):
 
 def _bundled_analysis(store):
     """Run one real Casimir analysis through the funnel + bundle path."""
-    from apps.coordinator.matter_runner import analyze_and_bundle
+    from forge_matter.app.runner import analyze_and_bundle
     from forge_matter.compiler import load_configuration
     config = load_configuration(CASIMIR_GENOME)
-    mstore.save_matter_configuration(config)
+    mstore().save_matter_configuration(config)
     analysis, bundle = analyze_and_bundle(config)
-    mstore.save_matter_analysis(analysis)
+    mstore().save_matter_analysis(analysis)
     return config, analysis, bundle
 
 

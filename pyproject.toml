@@ -40,14 +40,18 @@ dev = [
 geometry = "forge_geometry.plugin:plugin"
 matter = "forge_matter.plugin:plugin"
 
-# Two plugin source roots.  The package names are unchanged from their
-# monorepo lives (forge_geometry, forge_math, …) so every existing import
-# keeps working — the split moved code between repositories, not between
-# namespaces.
-[tool.setuptools.packages.find]
-where = ["plugins/geometry", "plugins/matter"]
-include = ["forge_*"]
-namespaces = false
+# Explicit package map rather than multi-root discovery.  Two `where` roots
+# push setuptools into a copy-based editable install that silently omits
+# subpackages and package data — the plugin then registers and fails at
+# first use.  An explicit map keeps editable installs pointing at the source
+# tree, which is also what makes plugin development a no-publish loop.
+[tool.setuptools]
+package-dir = { forge_geometry = "plugins/geometry/forge_geometry", forge_math = "plugins/geometry/forge_math", forge_metrics = "plugins/geometry/forge_metrics", forge_validation = "plugins/geometry/forge_validation", forge_verify = "plugins/geometry/forge_verify", forge_matter = "plugins/matter/forge_matter" }
+packages = [
+    "forge_geometry", "forge_geometry.app",
+    "forge_math", "forge_metrics", "forge_validation", "forge_verify",
+    "forge_matter", "forge_matter.app",
+]
 
 [tool.setuptools.package-data]
 # Domain data ships inside its plugin package so it resolves identically
