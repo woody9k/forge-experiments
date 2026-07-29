@@ -254,6 +254,14 @@ def list_campaigns() -> dict:
 from forge_sdk import PluginManifest, SimplePlugin  # noqa: E402
 
 
+
+def _load_pack(name):
+    from pathlib import Path
+    from forge_sdk import SagePack
+
+    path = Path(__file__).resolve().parents[2] / "prompts" / "sage" / "packs" / f"{name}.md"
+    return SagePack(name=name, version="1", content=path.read_text())
+
 def _register(registry):
     from apps.coordinator.sage_tools_matter import TOOLS as _SAGE_TOOLS
     from apps.coordinator.store_matter import MatterBase
@@ -262,6 +270,7 @@ def _register(registry):
     for spec, handler in _SAGE_TOOLS:
         registry.add_sage_tool(spec, handler)
     registry.add_persistence_metadata(MatterBase.metadata)
+    registry.add_sage_pack(_load_pack("matter"))
 
 
 plugin = SimplePlugin(

@@ -234,6 +234,14 @@ def export_experiment(experiment_id: str) -> FileResponse:
 from forge_sdk import PluginManifest, SimplePlugin  # noqa: E402
 
 
+
+def _load_pack(name):
+    from pathlib import Path
+    from forge_sdk import SagePack
+
+    path = Path(__file__).resolve().parents[2] / "prompts" / "sage" / "packs" / f"{name}.md"
+    return SagePack(name=name, version="1", content=path.read_text())
+
 def _register(registry):
     from apps.coordinator.queue_tasks_geometry import TASK_TYPES as _TASK_TYPES
     from apps.coordinator.store_geometry import GeometryBase
@@ -248,6 +256,7 @@ def _register(registry):
     for task_type in _TASK_TYPES:
         registry.add_task_type(task_type)
     registry.add_persistence_metadata(GeometryBase.metadata)
+    registry.add_sage_pack(_load_pack("geometry"))
 
 
 plugin = SimplePlugin(
