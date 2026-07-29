@@ -4,6 +4,73 @@
 // ForgeUI registration and the shared api/esc helpers.
 
 // ---------------------------------------------------------------- metrics
+// The plugin owns its markup as well as its behaviour: the shell's
+// index.html has no geometry elements, so installing or removing this plugin
+// is what puts the section on the page or takes it away.
+const GEOMETRY_MARKUP = `
+    <section class="xsection" id="xsec-geometry">
+      <h2>Spacetime Geometry</h2>
+      <p class="viz-meta">Start from a spacetime shape — derive the matter it
+        demands, then ask whether that matter is physically reasonable
+        (energy conditions). Known metrics are validated against published
+        values before anything novel is trusted.</p>
+      <div class="subnav tabstrip" data-group="geometry">
+        <button data-pane="library" class="active">Library</button>
+        <button data-pane="new-run">New Run</button>
+        <button data-pane="results">Runs &amp; Results</button>
+      </div>
+
+      <div class="pane" data-group="geometry" id="pane-geometry-library">
+        <div id="metric-list"></div>
+      </div>
+
+      <div class="pane hidden" data-group="geometry" id="pane-geometry-new-run">
+        <form id="exp-form">
+          <label>Metric
+            <select id="b-metric"></select>
+          </label>
+          <fieldset id="b-params"><legend>Parameters</legend></fieldset>
+          <fieldset><legend>Grid (2-D slice)</legend>
+            <div id="b-grid"></div>
+            <label>Resolution <input id="b-res" type="number" value="32" min="4" max="256"></label>
+          </fieldset>
+          <fieldset><legend>Energy conditions</legend>
+            <label title="Null energy condition — the weakest requirement: light-ray observers never measure negative energy flux. Violating it requires exotic matter."><input type="checkbox" id="b-nec" checked> NEC</label>
+            <label title="Weak energy condition — every observer measures non-negative energy density. Implies NEC."><input type="checkbox" id="b-wec" checked> WEC</label>
+            <label title="Strong energy condition — gravity is attractive on average. The least fundamental: ordinary dark energy already violates it."><input type="checkbox" id="b-sec" checked> SEC</label>
+            <label title="Dominant energy condition — energy never flows faster than light. Implies WEC."><input type="checkbox" id="b-dec" checked> DEC</label>
+          </fieldset>
+          <button type="submit">Submit experiment</button>
+          <span id="b-status"></span>
+        </form>
+      </div>
+
+      <div class="pane hidden" data-group="geometry" id="pane-geometry-results">
+        <label>Experiment <select id="r-select"></select></label>
+        <button id="r-refresh">Refresh</button>
+        <a id="r-export" href="#" download>Download bundle</a>
+        <div id="r-meta"></div>
+        <div id="r-verdict" class="hidden"></div>
+        <h3>Validations</h3>
+        <table id="r-validations"><thead>
+          <tr><th>check</th><th>status</th><th title="reproduced by the independent frame backend (same CAS, independent implementation)">independent</th><th>residual</th><th>tolerance</th><th>evidence</th></tr>
+        </thead><tbody></tbody></table>
+        <h3>Energy conditions</h3>
+        <table id="r-ec"><thead>
+          <tr><th>condition</th><th>status</th><th>min value</th><th>violating samples</th><th>tolerance</th></tr>
+        </thead><tbody></tbody></table>
+        <h3 title="Energy density measured by observers at rest in the spatial grid (the Eulerian frame) — negative values are the signature of exotic matter.">Eulerian energy density</h3>
+        <div id="r-viz-meta" class="viz-meta"></div>
+        <canvas id="r-heatmap" width="640" height="500"></canvas>
+        <div id="r-hover" class="viz-meta">&nbsp;</div>
+        <div id="r-warnings"></div>
+      </div>
+    </section>
+`;
+
+document.getElementById("view-experiments")
+  .insertAdjacentHTML("beforeend", GEOMETRY_MARKUP);
+
 async function loadMetrics() {
   const metrics = await api("/metrics");
   document.getElementById("metric-list").innerHTML = metrics.map(m => m.error
@@ -409,6 +476,7 @@ function drawHeatmap(field) {
   });
   canvas.addEventListener("mouseleave", () => { hover.innerHTML = "&nbsp;"; });
 }
+
 
 
 ForgeUI.registerSection({
