@@ -47,7 +47,7 @@ def test_alcubierre_energy_conditions_violated_on_grid(geometries):
     """Full numeric path: metric + Einstein tensor on a grid through the
     bubble wall must yield confirmed NEC and WEC violations."""
     import numpy as np
-    from forge_domain.entities import GridSpec
+    from forge_geometry.entities import GridSpec
     from forge_math.numeric import evaluate_matrix, build_grid
     from forge_validation import evaluate_energy_conditions
 

@@ -13,6 +13,7 @@ S-3/S-4), exactly as the static registry did.
 from __future__ import annotations
 
 from apps.coordinator import store
+import forge_matter.app.store as mstore
 from apps.coordinator.sage_tools import ToolExecutionError, _safe_id
 from forge_matter import materials as matter_materials
 from forge_matter.mutations import OPERATORS as MUTATION_OPERATORS
@@ -37,7 +38,7 @@ def _list_matter_models(program, args):
 
 
 def _get_matter_configuration(program, args):
-    cfg = store.load_matter_configuration(args["configuration_id"])
+    cfg = mstore.load_matter_configuration(args["configuration_id"])
     if cfg is None:
         raise ToolExecutionError(
             f"unknown matter configuration {args['configuration_id']!r}")
@@ -80,7 +81,7 @@ def _mutate_matter_configuration(program, args):
     if operator not in program.policy.allowed_mutation_operators:
         raise ToolExecutionError(
             f"mutation operator {operator!r} is not allowlisted for this program")
-    parent_payload = store.load_matter_configuration(parent_id)
+    parent_payload = mstore.load_matter_configuration(parent_id)
     if parent_payload is None:
         raise ToolExecutionError(f"unknown configuration {parent_id!r}")
     parent = MatterConfiguration.model_validate(parent_payload)
@@ -92,7 +93,7 @@ def _mutate_matter_configuration(program, args):
         raise ToolExecutionError(str(exc)) from exc
     if args.get("child_id"):
         child.id = _safe_id(args["child_id"])  # caller-reserved (ledger-first)
-    store.save_matter_configuration(child)
+    mstore.save_matter_configuration(child)
     return {"configuration_id": child.id, "genome_hash": child.genome_hash,
             "generation": child.generation}
 
@@ -105,11 +106,11 @@ def _submit_matter_analysis(program, args):
     through the exact same ``analyze_and_bundle`` path the human-facing flow
     uses: SAGE cannot bypass Warp Forge validation.
     """
-    from apps.coordinator.matter_runner import analyze_and_bundle
+    from forge_matter.app.runner import analyze_and_bundle
     from forge_matter import MatterConfiguration
 
     config_id = _safe_id(args["configuration_id"])
-    payload = store.load_matter_configuration(config_id)
+    payload = mstore.load_matter_configuration(config_id)
     if payload is None:
         raise ToolExecutionError(f"unknown configuration {config_id!r}")
     config = MatterConfiguration.model_validate(payload)
@@ -122,7 +123,7 @@ def _submit_matter_analysis(program, args):
     analysis, bundle = analyze_and_bundle(
         config, max_gate=int(args.get("max_gate", 2)),
         seed=int(args.get("seed", 0)), analysis_id=reserved)
-    store.save_matter_analysis(analysis)
+    mstore.save_matter_analysis(analysis)
     return {"analysis_id": analysis.id, "status": analysis.status,
             "highest_gate_completed": analysis.highest_gate_completed,
             "bundle": bundle.name}

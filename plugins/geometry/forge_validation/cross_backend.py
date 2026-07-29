@@ -27,7 +27,8 @@ from dataclasses import dataclass, field
 
 import sympy as sp
 
-from forge_domain.entities import SolverBackend, ValidationResult, ValidationStatus
+from forge_domain.entities import ValidationStatus
+from forge_geometry.entities import SolverBackend, ValidationResult
 from forge_math.pipeline import GeometryResult
 from forge_metrics.loader import ParsedMetric
 from forge_verify import (

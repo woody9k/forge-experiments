@@ -18,7 +18,7 @@ from dataclasses import dataclass, field
 import numpy as np
 import sympy as sp
 
-from forge_domain.entities import GridSpec
+from forge_geometry.entities import GridSpec
 
 
 class GridEvaluationError(RuntimeError):

@@ -19,8 +19,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from apps.coordinator import runner, store  # noqa: E402
-from forge_domain.entities import Experiment, ExperimentStatus, GridSpec  # noqa: E402
+from apps.coordinator import store
+import forge_geometry.app.store as gstore
+from forge_geometry.app import runner  # noqa: E402
+from forge_domain.entities import ExperimentStatus
+from forge_geometry.entities import Experiment, GridSpec  # noqa: E402
 from forge_metrics import builtin_metrics, load_metric_file  # noqa: E402
 
 
@@ -75,10 +78,10 @@ def main() -> int:
         random_seed=args.seed,
         status=ExperimentStatus.QUEUED,
     )
-    store.save_experiment(exp)
+    gstore.save_experiment(exp)
     run, manifest = runner.execute_experiment(exp)
-    store.save_experiment(exp)
-    store.save_results(run.computation_results, run.validation_results)
+    gstore.save_experiment(exp)
+    gstore.save_results(run.computation_results, run.validation_results)
 
     print(f"experiment  {exp.id}")
     print(f"status      {exp.status.value}")

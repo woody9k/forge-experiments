@@ -29,7 +29,17 @@ from forge_sdk.expressions import RestrictedParseError, parse_expression
 
 COMPILER_VERSION = "0.1.0"
 C_LIGHT = 299_792_458.0
-_SCHEMA_PATH = Path(__file__).resolve().parents[2] / "schemas" / "matter-configuration.schema.json"
+def _matter_data(*parts: str) -> Path:
+    """Locate matter-plugin package data (JSON Schemas)."""
+    from importlib import resources
+
+    root = resources.files("forge_matter")
+    for part in parts:
+        root = root / part
+    return Path(str(root))
+
+
+_SCHEMA_PATH = _matter_data("schemas", "matter-configuration.schema.json")
 _PROFILE_SAMPLES = 512  # deterministic sample count for graded densities
 
 

@@ -9,7 +9,8 @@ those two failure modes are tested as deliberately as the happy path.
 import pytest
 import sympy as sp
 
-from forge_domain.entities import MetricDefinition, ValidationStatus
+from forge_domain.entities import ValidationStatus
+from forge_geometry.entities import MetricDefinition
 from forge_metrics.loader import ParsedMetric
 from forge_validation.cross_backend import (
     CrossBackendVerification, apply_independent_verification, run_cross_backend_check,

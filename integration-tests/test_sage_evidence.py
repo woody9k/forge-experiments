@@ -6,18 +6,34 @@ these tests prove tampered, foreign, and fabricated evidence all fail loudly.
 
 from __future__ import annotations
 
+
+def _reloadable(module_name: str) -> bool:
+    """Modules a fresh-environment fixture must drop.
+
+    The platform's app layer *and* the plugin app layers: plugin modules
+    bind platform services (store session, bundle paths) at import time, so
+    dropping only ``apps.*`` leaves plugin modules pointing at the previous
+    test's engine — which is silent cross-test contamination, not an error.
+    """
+    return (module_name.startswith("apps.")
+            or module_name.startswith("forge_geometry.app")
+            or module_name.startswith("forge_matter.app"))
+
+
+import forge_matter.app.store as mstore  # platform-split: matter rows are plugin-owned
+
 import sys
 
 import pytest
 
-from tests.integration.test_sage_slice import CASIMIR_GENOME
+from test_sage_slice import CASIMIR_GENOME
 
 
 @pytest.fixture()
 def env(tmp_path, monkeypatch):
     monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path}/sage-ev.db")
     monkeypatch.setenv("EXPERIMENTS_DIR", str(tmp_path / "experiments"))
-    for mod in [m for m in list(sys.modules) if m.startswith("apps.")]:
+    for mod in [m for m in list(sys.modules) if _reloadable(m)]:
         del sys.modules[mod]
     from apps.coordinator import sage_evidence, store
     yield store, sage_evidence, tmp_path
@@ -28,9 +44,9 @@ def _bundled_analysis(store):
     from apps.coordinator.matter_runner import analyze_and_bundle
     from forge_matter.compiler import load_configuration
     config = load_configuration(CASIMIR_GENOME)
-    store.save_matter_configuration(config)
+    mstore.save_matter_configuration(config)
     analysis, bundle = analyze_and_bundle(config)
-    store.save_matter_analysis(analysis)
+    mstore.save_matter_analysis(analysis)
     return config, analysis, bundle
 
 

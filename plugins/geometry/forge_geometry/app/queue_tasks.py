@@ -24,7 +24,9 @@ from types import SimpleNamespace
 
 import sympy as sp
 
-from apps.coordinator import runner, store
+from apps.coordinator import store
+import forge_geometry.app.store as gstore
+from forge_geometry.app import runner
 from forge_domain.entities import ExperimentStatus, utcnow
 from forge_geometry.entities import Experiment, ValidationResult
 from forge_sdk.pipelines import QueueTaskType
@@ -74,7 +76,7 @@ def run_experiment_symbolic(task, experiment_json: dict) -> dict:
 
     exp.started_at = utcnow()
     exp.status = ExperimentStatus.RUNNING
-    store.save_experiment(exp)
+    gstore.save_experiment(exp)
     try:
         run = runner.prepare_run(exp)
         runner.run_symbolic_phase(run)
@@ -83,21 +85,21 @@ def run_experiment_symbolic(task, experiment_json: dict) -> dict:
         exp.status = ExperimentStatus.FAILED
         exp.error = str(exc)
         exp.completed_at = utcnow()
-        store.save_experiment(exp)
+        gstore.save_experiment(exp)
         raise
 
-    store.save_results(run.computation_results, run.validation_results)
+    gstore.save_results(run.computation_results, run.validation_results)
 
     if exp.grid is not None:
         # hand off to the numerical queue; it re-reads everything from the bundle
         from apps.queue_app import celery_app
-        store.save_experiment(exp)
+        gstore.save_experiment(exp)
         celery_app.send_task("forge.run_experiment_numerical",
                              args=[exp.model_dump(mode="json")])
         log.info("symbolic phase done; numerical phase queued", extra=trace)
     else:
         manifest = runner.finalize_run(run, ExperimentStatus.COMPLETED)
-        store.save_experiment(exp)
+        gstore.save_experiment(exp)
         log.info("experiment completed (symbolic only)", extra=trace)
         return manifest
     return {"chained": True}
@@ -147,13 +149,13 @@ def run_experiment_numerical(task, experiment_json: dict) -> dict:
         exp.status = ExperimentStatus.FAILED
         exp.error = str(exc)
         exp.completed_at = utcnow()
-        store.save_experiment(exp)
+        gstore.save_experiment(exp)
         raise
 
-    store.save_results(run.computation_results, [])
+    gstore.save_results(run.computation_results, [])
     exp.status = ExperimentStatus.COMPLETED
     exp.completed_at = utcnow()
-    store.save_experiment(exp)
+    gstore.save_experiment(exp)
     log.info("experiment completed", extra=trace)
     return {"status": "completed", "warnings": manifest["warnings"]}
 

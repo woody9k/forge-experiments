@@ -1,0 +1,66 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "forge-experiments"
+version = "0.4.0"
+description = "Experiment-domain plugins for the Forge platform: spacetime geometry and matter."
+requires-python = ">=3.12"
+license = { text = "MIT" }
+dependencies = [
+    # The platform provides forge_domain, forge_sdk, and the services these
+    # plugins contribute to (apps.coordinator.store, bundles, plugin
+    # registry).  Version-pinned to the compatibility range the manifests
+    # declare, so an incompatible platform fails at install rather than at
+    # plugin-registration time.
+    "forge-platform>=0.4,<0.5",
+    # Domain science dependencies.  Deliberately declared here rather than
+    # inherited from the platform: the geometry pipeline's CAS and the
+    # matter models are experiment concerns, and a future platform without
+    # a symbolic domain installed should not be forced to carry SymPy.
+    "sympy>=1.14",
+    "numpy>=2.0",
+    "scipy>=1.14",
+    "pydantic>=2.7",
+    "pyyaml>=6.0",
+    "jsonschema>=4.21",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+]
+
+# How Forge finds these plugins.  Nothing else registers them: the platform
+# discovers `forge.plugins` entry points at startup and isolates failures
+# per plugin, so a broken or incompatible plugin here cannot stop Forge.
+[project.entry-points."forge.plugins"]
+geometry = "forge_geometry.plugin:plugin"
+matter = "forge_matter.plugin:plugin"
+
+# Two plugin source roots.  The package names are unchanged from their
+# monorepo lives (forge_geometry, forge_math, …) so every existing import
+# keeps working — the split moved code between repositories, not between
+# namespaces.
+[tool.setuptools.packages.find]
+where = ["plugins/geometry", "plugins/matter"]
+include = ["forge_*"]
+namespaces = false
+
+[tool.setuptools.package-data]
+# Domain data ships inside its plugin package so it resolves identically
+# from a source checkout and an installed wheel (the platform's
+# limitations P8 lesson, applied here from the start).
+forge_geometry = ["metrics/*/*.yaml", "schemas/*.json", "sage/*.md", "ui/*.js"]
+forge_matter = ["data/*.yaml", "schemas/*.json", "sage/*.md", "ui/*.js"]
+
+[tool.pytest.ini_options]
+testpaths = ["plugins", "integration-tests"]
+markers = [
+    "validation: scientific validation tests against known results",
+    "convergence: resolution-sensitivity tests",
+    "slow: long-running symbolic computations",
+    "postgres: needs a real PostgreSQL server (FORGE_TEST_POSTGRES_URL); skipped otherwise",
+]

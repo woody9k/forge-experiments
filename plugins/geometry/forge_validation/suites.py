@@ -16,7 +16,8 @@ from __future__ import annotations
 import numpy as np
 import sympy as sp
 
-from forge_domain.entities import SolverBackend, ValidationResult, ValidationStatus
+from forge_domain.entities import ValidationStatus
+from forge_geometry.entities import SolverBackend, ValidationResult
 from forge_math.pipeline import GeometryResult
 from forge_metrics.loader import ParsedMetric
 

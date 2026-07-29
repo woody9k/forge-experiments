@@ -16,7 +16,8 @@ import jsonschema
 from fastapi import APIRouter, HTTPException
 
 from apps.coordinator import store
-from apps.coordinator.matter_runner import analyze_and_bundle, compare_with_parent
+import forge_matter.app.store as mstore
+from forge_matter.app.runner import analyze_and_bundle, compare_with_parent
 from forge_matter import casimir, materials
 from forge_matter.compiler import CompileError, compile_configuration, load_configuration
 from forge_matter.entities import MatterAnalysis, MatterConfiguration, ValidationState
@@ -24,7 +25,17 @@ from forge_matter.mutations import OPERATORS, MutationError, mutate
 
 router = APIRouter(prefix="/api/v1/matter", tags=["matter"])
 
-_CAMPAIGN_SCHEMA = Path(__file__).resolve().parents[2] / "schemas" / "matter-campaign.schema.json"
+def _matter_data(*parts: str) -> Path:
+    """Locate matter-plugin package data (JSON Schemas)."""
+    from importlib import resources
+
+    root = resources.files("forge_matter")
+    for part in parts:
+        root = root / part
+    return Path(str(root))
+
+
+_CAMPAIGN_SCHEMA = _matter_data("schemas", "matter-campaign.schema.json")
 
 SEARCH_GATING = [
     "B-2 independent solver verification",
@@ -83,7 +94,7 @@ def casimir_analyze(body: dict) -> dict:
 # ------------------------------------------------------------ configurations
 
 def _load_config(config_id: str) -> MatterConfiguration:
-    payload = store.load_matter_configuration(config_id)
+    payload = mstore.load_matter_configuration(config_id)
     if payload is None:
         raise HTTPException(404, "configuration not found")
     return MatterConfiguration.model_validate(payload)
@@ -95,14 +106,14 @@ def create_configuration(genome: dict) -> dict:
         config = load_configuration(genome)
     except CompileError as exc:
         raise HTTPException(422, str(exc)) from exc
-    store.save_matter_configuration(config)
+    mstore.save_matter_configuration(config)
     return {"id": config.id, "genome_hash": config.genome_hash,
             "validation_state": config.validation_state.value}
 
 
 @router.get("/configurations")
 def list_configurations(limit: int = 100) -> list[dict]:
-    return store.list_matter_configurations(limit=min(limit, 500))
+    return mstore.list_matter_configurations(limit=min(limit, 500))
 
 
 @router.get("/configurations/{config_id}")
@@ -118,7 +129,7 @@ def validate_configuration(config_id: str) -> dict:
     except CompileError as exc:
         return {"valid": False, "error": str(exc)}
     config.validation_state = ValidationState.VALIDATED
-    store.save_matter_configuration(config)
+    mstore.save_matter_configuration(config)
     return {"valid": True, "phenotype_hash": phenotype["phenotype_hash"],
             "warnings": phenotype["warnings"]}
 
@@ -141,8 +152,8 @@ def simulate_configuration(config_id: str, max_gate: int = 2, seed: int = 0) -> 
                  "reported as not_implemented — call with max_gate<=2, or see "
                  "docs/matter-forge-design.md §6")
     analysis, bundle = analyze_and_bundle(config, max_gate=max_gate, seed=seed)
-    store.save_matter_configuration(config)  # phenotype hash now filled
-    store.save_matter_analysis(analysis)
+    mstore.save_matter_configuration(config)  # phenotype hash now filled
+    mstore.save_matter_analysis(analysis)
     return {"analysis_id": analysis.id, "status": analysis.status,
             "highest_gate_completed": analysis.highest_gate_completed,
             "bundle": bundle.name}
@@ -150,7 +161,7 @@ def simulate_configuration(config_id: str, max_gate: int = 2, seed: int = 0) -> 
 
 @router.get("/configurations/{config_id}/stress-energy")
 def stress_energy(config_id: str) -> dict:
-    analyses = store.matter_analyses_for(config_id)
+    analyses = mstore.matter_analyses_for(config_id)
     if not analyses:
         raise HTTPException(404, "no analyses for this configuration; simulate first")
     latest = analyses[0]
@@ -168,7 +179,7 @@ def mutate_configuration(config_id: str, body: dict) -> dict:
                        reason=body.get("reason", ""))
     except (KeyError, MutationError) as exc:
         raise HTTPException(422, str(exc)) from exc
-    store.save_matter_configuration(child)
+    mstore.save_matter_configuration(child)
     return {"id": child.id, "parent_id": parent.id,
             "generation": child.generation,
             "mutation": child.mutation_history[-1].model_dump(mode="json"),
@@ -185,7 +196,7 @@ def branch_configuration(config_id: str, body: dict | None = None) -> dict:
         generation=parent.generation + 1,
         mutation_history=parent.mutation_history,
     )
-    store.save_matter_configuration(child)
+    mstore.save_matter_configuration(child)
     return {"id": child.id, "parent_id": parent.id}
 
 
@@ -195,7 +206,7 @@ def lineage(config_id: str) -> dict:
     ancestors = []
     cursor = config
     while cursor.parent_ids:
-        payload = store.load_matter_configuration(cursor.parent_ids[0])
+        payload = mstore.load_matter_configuration(cursor.parent_ids[0])
         if payload is None:
             break
         cursor = MatterConfiguration.model_validate(payload)
@@ -205,7 +216,7 @@ def lineage(config_id: str) -> dict:
         "id": config.id, "generation": config.generation,
         "mutation_history": [m.model_dump(mode="json") for m in config.mutation_history],
         "ancestors": ancestors,
-        "children": store.matter_children(config.id),
+        "children": mstore.matter_children(config.id),
     }
 
 
@@ -214,8 +225,8 @@ def compare_parent(config_id: str) -> dict:
     config = _load_config(config_id)
     if not config.parent_ids:
         raise HTTPException(422, "configuration has no parent")
-    child_analyses = store.matter_analyses_for(config_id)
-    parent_analyses = store.matter_analyses_for(config.parent_ids[0])
+    child_analyses = mstore.matter_analyses_for(config_id)
+    parent_analyses = mstore.matter_analyses_for(config.parent_ids[0])
     if not child_analyses or not parent_analyses:
         raise HTTPException(404, "both configurations must be simulated first")
     return compare_with_parent(
@@ -245,48 +256,3 @@ def create_campaign(spec: dict) -> dict:
 def list_campaigns() -> dict:
     return {"campaigns": [], "execution_available": False,
             "gated_on": SEARCH_GATING}
-
-
-# --------------------------------------------------------------- plugin decl
-# In-repo plugin registration (platform-split Phase 2).  Destined to become a
-# forge.plugins entry point in the forge-experiments repo.
-
-from forge_sdk import PluginManifest, SimplePlugin  # noqa: E402
-
-
-
-def _load_pack(name):
-    from pathlib import Path
-    from forge_sdk import SagePack
-
-    path = Path(__file__).resolve().parents[2] / "prompts" / "sage" / "packs" / f"{name}.md"
-    return SagePack(name=name, version="1", content=path.read_text())
-
-def _register(registry):
-    from apps.coordinator.sage_tools_matter import TOOLS as _SAGE_TOOLS
-    from apps.coordinator.store_matter import MatterBase
-
-    registry.add_api_router(router)
-    for spec, handler in _SAGE_TOOLS:
-        registry.add_sage_tool(spec, handler)
-    registry.add_persistence_metadata(MatterBase.metadata)
-    registry.add_sage_pack(_load_pack("matter"))
-
-
-plugin = SimplePlugin(
-    PluginManifest(
-        id="matter",
-        display_name="Matter Forge",
-        version="0.4.0",
-        description="Physically parameterized matter configurations: "
-                    "genome→phenotype compilation, Casimir and classical "
-                    "models, mutation and lineage.",
-        compatible_forge=">=0.4,<0.5",
-        safety_policies=[
-            "Campaign execution (POST /api/v1/matter/campaigns) returns 501 "
-            "until gates B-2, B-5, B-7, B-13, B-18 close "
-            "(docs/matter-forge-design.md §9).",
-        ],
-    ),
-    register=_register,
-)

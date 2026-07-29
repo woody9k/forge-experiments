@@ -9,7 +9,7 @@ resolved the feature and results at that resolution must be marked unstable.
 import numpy as np
 import pytest
 
-from forge_domain.entities import GridSpec
+from forge_geometry.entities import GridSpec
 from forge_math import compute_geometry
 from forge_math.numeric import build_grid, evaluate_matrix
 from forge_metrics import builtin_metrics, load_metric_file

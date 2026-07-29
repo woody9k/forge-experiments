@@ -17,10 +17,27 @@ import jsonschema
 import sympy as sp
 import yaml
 
-from forge_domain.entities import DefaultGridSpec, MetricDefinition, ParameterSpec, UnitsMode
+from forge_domain.entities import UnitsMode
+from forge_geometry.entities import DefaultGridSpec, MetricDefinition, ParameterSpec
 from forge_metrics.parser import RestrictedParseError, parse_expression
 
-_SCHEMA_PATH = Path(__file__).resolve().parents[2] / "schemas" / "metric-definition.schema.json"
+
+def _geometry_data(*parts: str) -> Path:
+    """Locate geometry-plugin package data (schemas, bundled metrics).
+
+    These ship as package data of ``forge_geometry`` so they resolve the
+    same way from a source checkout and an installed wheel — the platform
+    split's data-packaging lesson (platform limitations P8).
+    """
+    from importlib import resources
+
+    root = resources.files("forge_geometry")
+    for part in parts:
+        root = root / part
+    return Path(str(root))
+
+
+_SCHEMA_PATH = _geometry_data("schemas", "metric-definition.schema.json")
 _COMPONENT_RE = re.compile(r"^g_(\d)(\d)$")
 
 
@@ -189,7 +206,7 @@ def _build_matrix(components: dict[str, str], dim: int, symbols: dict[str, sp.Sy
 
 def builtin_metrics(metrics_dir: str | Path | None = None) -> dict[str, Path]:
     """Map of bundled metric name -> definition file path."""
-    root = Path(metrics_dir) if metrics_dir else Path(__file__).resolve().parents[2] / "metrics"
+    root = Path(metrics_dir) if metrics_dir else _geometry_data("metrics")
     out: dict[str, Path] = {}
     for p in sorted(root.glob("*/metric.yaml")):
         out[p.parent.name] = p

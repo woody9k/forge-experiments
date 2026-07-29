@@ -13,6 +13,7 @@ fails loud.
 from __future__ import annotations
 
 from apps.coordinator import store
+import forge_matter.app.store as mstore
 from apps.mcp._core import McpTool, Reservation, registry_tool
 from forge_sage import Role
 

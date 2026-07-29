@@ -17,8 +17,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from apps.coordinator import store  # noqa: E402
-from apps.coordinator.matter_runner import analyze_and_bundle, compare_with_parent  # noqa: E402
+from apps.coordinator import store
+import forge_matter.app.store as mstore  # noqa: E402
+from forge_matter.app.runner import analyze_and_bundle, compare_with_parent  # noqa: E402
 from forge_matter.compiler import load_configuration  # noqa: E402
 from forge_matter.mutations import mutate  # noqa: E402
 
@@ -79,9 +80,9 @@ def show(analysis) -> None:
 def main() -> int:
     banner("1. Casimir vertical path: parent (a = 100 nm)")
     parent = load_configuration(CASIMIR_GENOME)
-    store.save_matter_configuration(parent)
+    mstore.save_matter_configuration(parent)
     parent_analysis, parent_bundle = analyze_and_bundle(parent)
-    store.save_matter_analysis(parent_analysis)
+    mstore.save_matter_analysis(parent_analysis)
     show(parent_analysis)
     vac = [c for c in parent_analysis.contributions if c.contribution_type == "vacuum"][0]
     print(f"  vacuum <T_munu> diag = {vac.tensor_diag_si_j_m3} J/m^3")
@@ -91,9 +92,9 @@ def main() -> int:
     child = mutate(parent, "alter_separation",
                    {"target": "stack", "factor": 0.5}, seed=42,
                    reason="vertical-path demo: expect u x16, E_vac x8")
-    store.save_matter_configuration(child)
+    mstore.save_matter_configuration(child)
     child_analysis, child_bundle = analyze_and_bundle(child)
-    store.save_matter_analysis(child_analysis)
+    mstore.save_matter_analysis(child_analysis)
     show(child_analysis)
 
     banner("3. Compare child with parent (expected: u x16, E_vac x8 at a/2)")
@@ -110,9 +111,9 @@ def main() -> int:
 
     banner("4. Rotating classical-matter validation case")
     rot = load_configuration(ROTATING_GENOME)
-    store.save_matter_configuration(rot)
+    mstore.save_matter_configuration(rot)
     rot_analysis, rot_bundle = analyze_and_bundle(rot)
-    store.save_matter_analysis(rot_analysis)
+    mstore.save_matter_analysis(rot_analysis)
     show(rot_analysis)
     print(f"  bundle: {rot_bundle}")
 

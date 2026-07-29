@@ -32,10 +32,8 @@ from pathlib import Path
 import numpy as np
 import sympy as sp
 
-from forge_domain.entities import (
-    ComputationResult, EnergyConditionConfig, Experiment, ExperimentStatus,
-    GridSpec, ResultQuality, SolverBackend, ValidationResult, utcnow,
-)
+from forge_domain.entities import ExperimentStatus, ResultQuality, utcnow
+from forge_geometry.entities import ComputationResult, EnergyConditionConfig, Experiment, GridSpec, SolverBackend, ValidationResult
 from forge_math import compute_geometry
 from forge_math.numeric import build_grid, evaluate_matrix
 from forge_metrics import load_metric_file
@@ -74,7 +72,10 @@ CROSS_VERIFY_OP_BUDGET = SIMPLIFY_OP_BUDGET
 
 
 def metrics_dir() -> Path:
-    return Path(os.environ.get("METRICS_DIR", Path(__file__).resolve().parents[2] / "metrics"))
+    from forge_metrics.loader import _geometry_data
+
+    override = os.environ.get("METRICS_DIR")
+    return Path(override) if override else _geometry_data("metrics")
 
 
 def _op_count(matrix: sp.Matrix) -> int:

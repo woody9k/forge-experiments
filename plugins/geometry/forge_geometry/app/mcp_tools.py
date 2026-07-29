@@ -14,6 +14,7 @@ letting a client name it.
 from __future__ import annotations
 
 from apps.coordinator import store
+import forge_geometry.app.store as gstore
 from apps.mcp._core import McpTool, Reservation, registry_tool
 from forge_sage import Role
 
@@ -28,7 +29,7 @@ def _load_experiment(experiment_id: str) -> dict | None:
     like every other reservation loader.
     """
 
-    experiment = store.load_experiment(experiment_id)
+    experiment = gstore.load_experiment(experiment_id)
     return experiment.model_dump(mode="json") if experiment is not None else None
 
 
