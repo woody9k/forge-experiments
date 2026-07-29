@@ -8,6 +8,7 @@ deliberate limitation is visible in plugin metadata, not only in code.
 from __future__ import annotations
 
 from importlib import resources
+from pathlib import Path
 
 from forge_sdk import PluginManifest, SagePack, SimplePlugin
 
@@ -27,6 +28,17 @@ def _register(registry) -> None:
         registry.add_sage_tool(spec, handler)
     registry.add_persistence_metadata(MatterBase.metadata)
     registry.add_sage_pack(_pack())
+
+    def _mcp_tools():
+        # Lazy: MCP tools bind SAGE tool names, which exist only after every
+        # plugin has registered and the allowlist sync has run.
+        from forge_matter.app.mcp_tools import MATTER_TOOLS
+
+        return MATTER_TOOLS
+
+    registry.add_mcp_tools(_mcp_tools)
+    registry.add_ui_module(
+        Path(str(resources.files("forge_matter") / "ui" / "matter.js")), "matter.js")
 
 
 plugin = SimplePlugin(

@@ -56,7 +56,7 @@ MATTER_TOOLS: tuple[McpTool, ...] = (
         reservation=Reservation(
             argument="child_id", object_type="matter_configuration",
             result_key="configuration_id",
-            loader=store.load_matter_configuration),
+            loader=mstore.load_matter_configuration),
     ),
     registry_tool(
         "warp_forge.matter.configurations.simulate",
@@ -76,6 +76,6 @@ MATTER_TOOLS: tuple[McpTool, ...] = (
         required=("configuration_id",),
         reservation=Reservation(
             argument="analysis_id", object_type="matter_analysis",
-            result_key="analysis_id", loader=store.load_matter_analysis),
+            result_key="analysis_id", loader=mstore.load_matter_analysis),
     ),
 )

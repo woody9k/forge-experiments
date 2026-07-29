@@ -120,3 +120,28 @@ GEOMETRY_TOOLS: tuple[McpTool, ...] = (
         required=("experiment_a", "experiment_b"),
     ),
 )
+
+
+# ---------------------------------------------------------------- resources
+# The platform's MCP resource surface (warpforge://metric/…, /experiment/…,
+# /bundle/…) reads through these, so the resource layer holds no domain code.
+# Same containment as the tools: ids are validated and bundles are read
+# through the geometry SAGE tool implementation, never by raw path joins.
+
+
+def read_metric(name: str) -> dict:
+    from forge_geometry.app.api import get_metric
+
+    return get_metric(name)
+
+
+def read_experiment(experiment_id: str) -> dict:
+    from forge_geometry.app.api import get_experiment
+
+    return get_experiment(experiment_id)
+
+
+def read_bundle_manifest(experiment_id: str) -> dict:
+    from forge_geometry.app.sage_tools import bundle_manifest
+
+    return bundle_manifest(experiment_id)
