@@ -8,6 +8,9 @@ documentation.
 
 ```
 plugins/
+  example/      pendulum-lab: the reference plugin. Exercises every
+                contribution point on a domain that needs no physics to read,
+                and is the worked example for docs/plugin-authoring-guide.md
   geometry/     spacetime-geometry domain: metric library + symbolic tensor
                 pipeline (forge_math), restricted-format metric loading
                 (forge_metrics), energy conditions + known-answer validation
@@ -22,10 +25,19 @@ plugins/
                 deliberately 501-gated (see the platform's
                 docs/matter-forge-design.md §9)
 integration-tests/   cross-plugin + governed-loop (§21) integration tests
-docs/                plugin design docs (authoring guide lands here)
+docs/                plugin-authoring-guide.md + design docs
 ```
 
-## Status: wired and proven; awaiting the platform cutover
+## Writing a plugin
+
+Start with **[docs/plugin-authoring-guide.md](docs/plugin-authoring-guide.md)**
+and read `plugins/example/forge_pendulum/` alongside it. Check your work with
+
+```bash
+python -m forge_sdk.testing my-plugin      # or --all, or --strict
+```
+
+## Status: wired and proven
 
 Extracted from the platform monorepo with `git filter-repo` (history and
 blame travel with the code), then wired into two real plugins:
@@ -41,8 +53,6 @@ packages**: both plugins activate through entry-point discovery alone, a
 Schwarzschild experiment runs to 5/5 passing validations with visualization
 data, the matter path serves and simulates, and **112 plugin tests pass**.
 
-**Not yet complete**: the platform still reaches domain rows through
-compatibility shims that vanish when the domains leave it, so part of the
-governed-loop integration suite fails until the platform's cutover PR
-lands. Exactly what that PR must change — with the failure inventory — is
-in [docs/cross-repo-contract.md](docs/cross-repo-contract.md).
+The platform cutover has landed, so this repository is the only home of the
+domains. All 168 plugin and integration tests pass against an installed
+platform, and all three plugins pass the conformance harness.

@@ -39,6 +39,9 @@ dev = [
 [project.entry-points."forge.plugins"]
 geometry = "forge_geometry.plugin:plugin"
 matter = "forge_matter.plugin:plugin"
+# The reference plugin. Installed like any other, so `python -m
+# forge_sdk.testing --all` checks it beside the real domains.
+pendulum = "forge_pendulum.plugin:plugin"
 
 # Explicit package map rather than multi-root discovery.  Two `where` roots
 # push setuptools into a copy-based editable install that silently omits
@@ -46,11 +49,12 @@ matter = "forge_matter.plugin:plugin"
 # first use.  An explicit map keeps editable installs pointing at the source
 # tree, which is also what makes plugin development a no-publish loop.
 [tool.setuptools]
-package-dir = { forge_geometry = "plugins/geometry/forge_geometry", forge_math = "plugins/geometry/forge_math", forge_metrics = "plugins/geometry/forge_metrics", forge_validation = "plugins/geometry/forge_validation", forge_verify = "plugins/geometry/forge_verify", forge_matter = "plugins/matter/forge_matter" }
+package-dir = { forge_geometry = "plugins/geometry/forge_geometry", forge_math = "plugins/geometry/forge_math", forge_metrics = "plugins/geometry/forge_metrics", forge_validation = "plugins/geometry/forge_validation", forge_verify = "plugins/geometry/forge_verify", forge_matter = "plugins/matter/forge_matter", forge_pendulum = "plugins/example/forge_pendulum" }
 packages = [
     "forge_geometry", "forge_geometry.app",
     "forge_math", "forge_metrics", "forge_validation", "forge_verify",
     "forge_matter", "forge_matter.app",
+    "forge_pendulum", "forge_pendulum.app",
 ]
 
 [tool.setuptools.package-data]
@@ -59,6 +63,7 @@ packages = [
 # limitations P8 lesson, applied here from the start).
 forge_geometry = ["metrics/*/*.yaml", "schemas/*.json", "sage/*.md", "ui/*.js"]
 forge_matter = ["data/*.yaml", "schemas/*.json", "sage/*.md", "ui/*.js"]
+forge_pendulum = ["sage/*.md", "ui/*.js"]
 
 [tool.pytest.ini_options]
 testpaths = ["plugins", "integration-tests"]

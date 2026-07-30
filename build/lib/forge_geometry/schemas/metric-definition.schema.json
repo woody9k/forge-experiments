@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://metricforge.dev/schemas/metric-definition.schema.json",
+  "title": "Metric Forge metric definition",
+  "type": "object",
+  "required": ["name", "version", "dimensions", "coordinates", "metric"],
+  "additionalProperties": false,
+  "properties": {
+    "name": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]{1,63}$",
+      "description": "Machine name of the metric family."
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "description": "Semantic version of this definition."
+    },
+    "description": { "type": "string", "maxLength": 4000 },
+    "coordinate_system": {
+      "type": "string",
+      "enum": ["cartesian", "spherical", "cylindrical", "null", "other"]
+    },
+    "dimensions": { "type": "integer", "minimum": 2, "maximum": 5 },
+    "coordinates": {
+      "type": "array",
+      "items": { "type": "string", "pattern": "^[a-zA-Z][a-zA-Z0-9_]{0,15}$" },
+      "minItems": 2,
+      "maxItems": 5
+    },
+    "signature": { "type": "string", "pattern": "^[-+]{2,5}$" },
+    "units": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "mode": { "type": "string", "enum": ["geometrized", "si"] }
+      }
+    },
+    "parameters": {
+      "type": "object",
+      "maxProperties": 16,
+      "additionalProperties": {
+        "type": "object",
+        "required": ["symbol", "default"],
+        "additionalProperties": false,
+        "properties": {
+          "symbol": { "type": "string", "pattern": "^[a-zA-Z][a-zA-Z0-9_]{0,15}$" },
+          "default": { "type": "number" },
+          "description": { "type": "string", "maxLength": 500 },
+          "minimum": { "type": "number" },
+          "maximum": { "type": "number" }
+        }
+      }
+    },
+    "metric": {
+      "type": "object",
+      "minProperties": 3,
+      "maxProperties": 25,
+      "propertyNames": { "pattern": "^g_[0-4][0-4]$" },
+      "additionalProperties": { "type": "string", "maxLength": 20000 },
+      "description": "Symbolic components of the lower-index metric tensor. Symmetric partners may be omitted."
+    },
+    "assumptions": {
+      "type": "array",
+      "maxItems": 32,
+      "items": { "type": "string", "maxLength": 500 }
+    },
+    "default_grid": {
+      "type": "object",
+      "required": ["vary"],
+      "additionalProperties": false,
+      "description": "Sensible default sampling window for this metric: coordinate ranges to vary and slice values for the rest. Guidance for grid selection, not part of the metric's physical identity.",
+      "properties": {
+        "vary": {
+          "type": "object",
+          "minProperties": 1,
+          "maxProperties": 5,
+          "propertyNames": { "pattern": "^[a-zA-Z][a-zA-Z0-9_]{0,15}$" },
+          "additionalProperties": {
+            "type": "array",
+            "items": { "type": "number" },
+            "minItems": 2,
+            "maxItems": 2
+          }
+        },
+        "fix": {
+          "type": "object",
+          "maxProperties": 5,
+          "propertyNames": { "pattern": "^[a-zA-Z][a-zA-Z0-9_]{0,15}$" },
+          "additionalProperties": { "type": "number" }
+        }
+      }
+    },
+    "source_citation": { "type": "string", "maxLength": 1000 },
+    "author": { "type": "string", "maxLength": 200 }
+  }
+}
