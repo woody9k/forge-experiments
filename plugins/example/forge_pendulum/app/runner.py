@@ -22,22 +22,22 @@ SMALL_ANGLE_TOLERANCE = 1e-2
 SMALL_ANGLE_MAX_DEG = 5.0
 
 
-def execute(spec_dict: dict, run_id: str | None = None) -> dict:
-    """Run one pendulum experiment and write a self-contained bundle."""
+def run_to_bundle(spec_dict: dict, run_id: str) -> dict:
+    """Run one pendulum experiment and write a self-contained bundle.
+
+    Deliberately **store-free**: this is the half a Worker Fabric agent can
+    call on a host that has no database (see ``forge_pendulum.worker``).
+    Persistence is ``execute``'s job, on the coordinator side.
+    """
     spec = PendulumSpec(**spec_dict)
-    run_id = run_id or new_run_id()
     started = utcnow()
 
     try:
         result = integrate(spec)
-        status = "completed"
-        error = None
     except ValueError as exc:          # invalid input: fail loudly, no bundle
-        run = {"id": run_id, "spec": spec_dict, "status": "failed",
-               "error": str(exc), "result": None,
-               "created_at": started.isoformat()}
-        save_run(run)
-        return run
+        return {"id": run_id, "spec": spec_dict, "status": "failed",
+                "error": str(exc), "result": None,
+                "created_at": started.isoformat()}
 
     validation = _validate(spec, result)
     bundle_dir = experiments_dir() / run_id
@@ -64,10 +64,16 @@ def execute(spec_dict: dict, run_id: str | None = None) -> dict:
     }
     checksummed_dump(bundle_dir / "manifest.json", manifest)
 
-    run = {"id": run_id, "spec": spec_dict, "status": status, "error": error,
-           "result": result.as_dict(), "validation": validation,
-           "bundle": run_id, "created_at": started.isoformat()}
-    save_run(run)
+    return {"id": run_id, "spec": spec_dict, "status": "completed",
+            "error": None, "result": result.as_dict(), "validation": validation,
+            "bundle": run_id, "manifest": manifest,
+            "created_at": started.isoformat()}
+
+
+def execute(spec_dict: dict, run_id: str | None = None) -> dict:
+    """Run one experiment and persist it. The coordinator-side entry point."""
+    run = run_to_bundle(spec_dict, run_id or new_run_id())
+    save_run({k: v for k, v in run.items() if k != "manifest"})
     return run
 
 

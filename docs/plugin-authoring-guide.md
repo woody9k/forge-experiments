@@ -52,6 +52,9 @@ pendulum = "forge_pendulum.plugin:plugin"
 | `add_ui_module(path, name)` | a browser module that injects your UI section |
 | `add_experiment_protocol(protocol)` | how SAGE runs a comparative experiment in your domain (below) |
 
+Worker hosts get a separate, smaller entry point — see *Running on the
+Worker Fabric* below.
+
 Register from inside `register()`, import inside it (a broken import then
 disables *your* plugin instead of breaking startup), and expect the platform
 to withdraw everything you added the moment you are disabled.
@@ -110,6 +113,43 @@ a tool you do not register is a conformance failure, not a runtime surprise.
 What stays the platform's: the state machine, the human gates, budgets,
 reserve-first idempotency, the audit trail, evidence re-verification and the
 claim ladder. Your protocol supplies the method and nothing else.
+
+## Running on the Worker Fabric
+
+A Worker Fabric agent runs on a host with no database, no coordinator and no
+plugin registry — it cannot import your `plugin.py`. So worker-side
+contributions come through a second, tiny entry point:
+
+```toml
+[project.entry-points."forge.worker"]
+pendulum = "forge_pendulum.worker"
+```
+
+The module it names exposes either or both of:
+
+```python
+SUITES = [...]                       # SelftestSuite: what a host must prove
+JOB_EXECUTORS = {"pendulum_run": run_pendulum_job}
+```
+
+An executor is `execute(payload, workdir) -> JobResult`: run the work, write
+your bundle under `workdir` (the agent has already pointed
+`EXPERIMENTS_DIR` there), and return where you put it plus the domain id and
+any provenance you want on the attempt. The agent uploads it and the
+coordinator re-verifies every checksum — nothing you report about your own
+run is taken on trust.
+
+**The one hard rule: this module and everything it imports must work with no
+database.** `forge_pendulum/worker.py` imports `app.runner.run_to_bundle`,
+which is the store-free half of the pipeline, and imports it lazily so that
+stays visible. Importing your `app.store` here makes every agent need a
+database it has no reason to have.
+
+Contribute suites without an executor (you validate hosts but submit no
+fabric jobs), an executor without suites (your jobs need only the baseline
+capability), or both. A host with none of your plugin installed simply
+refuses your job type, naming what it *can* run — install your distribution
+there with `agent-install.sh --plugin <spec>`.
 
 ## Check yourself in one command
 
