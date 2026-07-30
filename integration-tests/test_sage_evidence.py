@@ -2,6 +2,12 @@
 
 Every assertion an EvidenceLink makes is re-derived from disk and the store;
 these tests prove tampered, foreign, and fabricated evidence all fail loudly.
+
+Matter's part of that — what the funnel status has to be, where its bundles
+live, which manifest field names the analysis — moved into this plugin with
+the platform's P-4 change; the machinery it rests on (checksum
+re-derivation, ledger ownership, link construction) stayed in the platform
+and is exercised here through matter's protocol.
 """
 
 from __future__ import annotations
@@ -76,12 +82,29 @@ def _program(store):
     return prog
 
 
+def _protocol():
+    """Matter's experiment protocol, resolved per call (see mstore)."""
+    import importlib
+
+    return importlib.import_module("forge_matter.app.protocol")
+
+
+def _verify_bundle(analysis_id: str) -> dict:
+    """Matter's bundle re-verification, without the ownership/status parts."""
+    from apps.coordinator import sage_evidence
+
+    return sage_evidence.verify_bundle(
+        _protocol().bundle_name(analysis_id), analysis_id,
+        label=f"analysis {analysis_id!r}")
+
+
 def test_intact_bundle_verifies(env):
     store, ev, _ = env
     _, analysis, _ = _bundled_analysis(store)
-    manifest = ev.verify_bundle(analysis.id)
-    assert manifest["analysis_id"] == analysis.id
-    assert manifest["artifact_checksums"]
+    verified = _verify_bundle(analysis.id)
+    assert verified["manifest"]["analysis_id"] == analysis.id
+    assert verified["manifest"]["artifact_checksums"]
+    assert verified["artifact_path"] == f"matter-{analysis.id}/manifest.json"
 
 
 def test_tampered_artifact_fails_checksum(env):
@@ -92,7 +115,7 @@ def test_tampered_artifact_fails_checksum(env):
     target.write_text(target.read_text().replace(
         '"status"', '"status_tampered"', 1))
     with pytest.raises(ev.EvidenceError, match="checksum mismatch"):
-        ev.verify_bundle(analysis.id)
+        _verify_bundle(analysis.id)
 
 
 def test_missing_manifest_fails(env):
@@ -100,7 +123,7 @@ def test_missing_manifest_fails(env):
     _, analysis, bundle = _bundled_analysis(store)
     (bundle / "manifest.json").unlink()
     with pytest.raises(ev.EvidenceError, match="no manifest"):
-        ev.verify_bundle(analysis.id)
+        _verify_bundle(analysis.id)
 
 
 def test_ownership_requires_ledger_proof(env):
@@ -110,13 +133,13 @@ def test_ownership_requires_ledger_proof(env):
     prog = _program(store)
     _, analysis, _ = _bundled_analysis(store)
     with pytest.raises(ev.EvidenceError, match="ownership"):
-        ev.verify_matter_analysis(prog, analysis.id,
-                                  plan_id="p" * 32, step="baseline")
+        _protocol().verify(analysis.id, program=prog, plan_id="p" * 32,
+                           arm="baseline")
     # With the ledger proof in place, the same analysis verifies.
     store.record_idempotent(prog.id, f"plan:{'p'*32}:analysis:baseline",
                             "matter_analysis", analysis.id)
-    verified = ev.verify_matter_analysis(prog, analysis.id,
-                                         plan_id="p" * 32, step="baseline")
+    verified = _protocol().verify(analysis.id, program=prog, plan_id="p" * 32,
+                                  arm="baseline")
     assert verified["manifest_checksum"]
 
 
@@ -124,8 +147,8 @@ def test_nonexistent_analysis_fails(env):
     store, ev, _ = env
     prog = _program(store)
     with pytest.raises(ev.EvidenceError, match="does not exist"):
-        ev.verify_matter_analysis(prog, "f" * 32, plan_id="p" * 32,
-                                  step="baseline")
+        _protocol().verify("f" * 32, program=prog, plan_id="p" * 32,
+                           arm="baseline")
 
 
 def test_evidence_link_detects_post_link_tampering(env):
@@ -139,6 +162,7 @@ def test_evidence_link_detects_post_link_tampering(env):
                             "matter_analysis", analysis.id)
     link = ev.build_verified_link(prog, "c" * 32, analysis.id,
                                   EvidenceRelationship.SUPPORTS,
+                                  protocol=_protocol().PROTOCOL,
                                   plan_id="p" * 32, step="baseline")
     ev.verify_evidence_link(prog, link)  # verifies while intact
 
@@ -167,5 +191,5 @@ def test_foreign_program_link_refused(env):
 def test_traversal_shaped_analysis_ids_refused(env):
     store, ev, _ = env
     for hostile in ("..", "../x", "matter-../../etc", "A" * 32):
-        with pytest.raises(ev.EvidenceError, match="invalid analysis id"):
-            ev.verify_bundle(hostile)
+        with pytest.raises(ev.EvidenceError, match="invalid artifact id"):
+            _verify_bundle(hostile)

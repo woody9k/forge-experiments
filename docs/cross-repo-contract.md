@@ -38,6 +38,14 @@ observation envelope (backlog **P-4**), not by this cutover; until then the
 honest behavior is: **the governed loop requires the matter plugin
 installed, and says so loudly when it is not.**
 
+> **Settled 2026-07-30 (P-4).** The loop drives a plugin-supplied
+> `ExperimentProtocol`, and so do evidence verification, the execution
+> policy gate and the level-2 repeat path. No platform module reaches a
+> domain's storage; `domain_store.py` is deleted. Every row in the table
+> above is gone. A research program now needs *some* protocol-supplying
+> plugin, not matter specifically — see the authoring guide's "Joining the
+> governed research loop".
+
 The cutover PR must also drop, in the platform:
 
 * `packages/forge_{geometry,math,metrics,validation,verify,matter,scoring}`

@@ -50,10 +50,66 @@ pendulum = "forge_pendulum.plugin:plugin"
 | `add_persistence_metadata(metadata)` | tables you own |
 | `add_mcp_tools(tools_or_callable)` | the same tools over the MCP surface |
 | `add_ui_module(path, name)` | a browser module that injects your UI section |
+| `add_experiment_protocol(protocol)` | how SAGE runs a comparative experiment in your domain (below) |
 
 Register from inside `register()`, import inside it (a broken import then
 disables *your* plugin instead of breaking startup), and expect the platform
 to withdraw everything you added the moment you are disabled.
+
+## Joining the governed research loop
+
+Contributing tools lets a SAGE role *call* your domain. Contributing an
+`ExperimentProtocol` lets a research program be *about* it: the loop plans
+arms, gets them approved by a human, submits them, verifies them, compares
+them and builds a claim on the result. Four operations, about seventy lines
+— `plugins/example/forge_pendulum/app/protocol.py` is the whole thing.
+
+```python
+from forge_sdk import ExperimentProtocol
+
+PROTOCOL = ExperimentProtocol(
+    domain="pendulum",
+    artifact_type="pendulum_run",     # evidence links carry this; keep it stable
+    required_tools=("run_pendulum_experiment",),
+    submit=submit, exists=exists, verify=verify, compare=compare,
+    validate_arm=validate_arm,        # optional, fail-early
+)
+```
+
+- **`submit(ctx, arm, repeat_of=None)`** produces one arm's artifact *under
+  the id the platform reserved* (`ctx.reserved_id`) — that reservation is
+  what makes a crash resumable instead of duplicating work. `ctx.call_tool`
+  is the same policy-checked, audited choke point the model goes through.
+  `repeat_of` means "run this again for verification".
+- **`exists(artifact_id)`** is the cheap poll the wait state uses.
+- **`verify(artifact_id, *, program, plan_id, arm)`** re-derives the
+  artifact's evidence *coordinator-side*, so the thing that produced a
+  result never certifies it. Say what validity means in your domain, then
+  lean on the platform for the rest:
+
+  ```python
+  from apps.coordinator import sage_evidence
+
+  sage_evidence.assert_owned(program, artifact_id, plan_id=plan_id, arm=arm)
+  verified = sage_evidence.verify_bundle(bundle_name, artifact_id)
+  return {"my_observable": ..., **verified}
+  ```
+
+  The return **must** carry `manifest_checksum` and `artifact_path`; the
+  platform will not invent them, and a claim cannot rest on an artifact its
+  domain will not checksum. Raise to reject.
+- **`compare(ctx, artifacts, mode, tolerances)`** returns whatever the
+  comparison means to you — `mode="arms"` is what the analyst role reads,
+  `mode="repeat"` is what level-2 verification reads. The platform passes it
+  through untouched; it never interprets your numbers.
+
+`required_tools` are authorized *before* a human is asked to approve the
+plan, so a program whose policy forbids the work is refused up front. Naming
+a tool you do not register is a conformance failure, not a runtime surprise.
+
+What stays the platform's: the state machine, the human gates, budgets,
+reserve-first idempotency, the audit trail, evidence re-verification and the
+claim ladder. Your protocol supplies the method and nothing else.
 
 ## Check yourself in one command
 

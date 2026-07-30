@@ -102,6 +102,25 @@ def _compare_experiments(program, args):
 
 # ----------------------------------------------------------------- write impls
 
+def verify_geometry_bundle(experiment_id: str) -> dict:
+    """Re-verify a geometry experiment's bundle; return the platform's report.
+
+    Lived in ``apps.coordinator.sage_evidence`` until P-4, where it was one of
+    two hardcoded domains in the evidence layer.  The bundle *format* is the
+    platform's and it re-derives every checksum; naming this experiment is
+    geometry's own check, so it is here.
+    """
+    from apps.coordinator import sage_evidence
+
+    verified = sage_evidence.verify_bundle(
+        experiment_id, experiment_id, label=f"experiment {experiment_id!r}")
+    named = verified["manifest"].get("experiment", {}).get("id")
+    if named != experiment_id:
+        raise sage_evidence.EvidenceError(
+            f"manifest experiment id {named!r} does not match {experiment_id!r}")
+    return verified
+
+
 def _submit_geometry_experiment(program, args):
     """Run one geometry experiment through the existing Metric Forge pipeline.
 
@@ -193,7 +212,7 @@ def _submit_geometry_experiment(program, args):
     # anything about the run.  The numbers below come from that re-verification.
     from apps.coordinator import sage_evidence
     try:
-        verified = sage_evidence.verify_geometry_bundle(experiment.id)
+        verified = verify_geometry_bundle(experiment.id)
     except sage_evidence.EvidenceError as exc:
         # A bundle that does not re-verify is not a result — fail loud, and
         # leave the audit row that every other tool outcome leaves.
@@ -205,8 +224,8 @@ def _submit_geometry_experiment(program, args):
         "status": experiment.status.value,
         "spec_hash": experiment.spec_hash(),
         "error": experiment.error,
-        "validation_summary": verified["validation_summary"],
-        "warnings": verified["warnings"],
+        "validation_summary": verified["manifest"]["validation_summary"],
+        "warnings": verified["manifest"]["warnings"],
         "bundle": experiment.id,
     }
 
