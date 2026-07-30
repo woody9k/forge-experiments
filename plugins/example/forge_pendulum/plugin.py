@@ -39,6 +39,10 @@ def _register(registry) -> None:
     for task_type in TASK_TYPES:
         registry.add_task_type(task_type)
     registry.add_persistence_metadata(PendulumBase.metadata)
+    # Our own Alembic branch, with our own version table (platform P-5).
+    # Resolved from this package, never the working directory — a relative
+    # path does not survive being installed as a wheel.
+    registry.add_migrations(str(Path(__file__).parent / "migrations"))
     registry.add_sage_pack(_pack())
 
     # How this domain runs a comparative experiment inside the governed
