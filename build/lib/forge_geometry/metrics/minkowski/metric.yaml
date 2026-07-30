@@ -1,0 +1,32 @@
+name: minkowski
+version: 1.0.0
+description: >
+  Flat Minkowski spacetime in Cartesian coordinates. Zero-curvature baseline:
+  every curvature tensor must vanish identically. This metric exists to prove
+  the pipeline's mathematics, not to be interesting.
+coordinate_system: cartesian
+dimensions: 4
+coordinates: [t, x, y, z]
+signature: "-+++"
+units:
+  mode: geometrized
+metric:
+  g_00: "-1"
+  g_01: "0"
+  g_02: "0"
+  g_03: "0"
+  g_11: "1"
+  g_12: "0"
+  g_13: "0"
+  g_22: "1"
+  g_23: "0"
+  g_33: "1"
+default_grid:
+  vary:
+    x: [-2.0, 2.0]
+    y: [-2.0, 2.0]
+  fix:
+    t: 0.0
+    z: 0.0
+source_citation: "Any GR textbook; e.g. Misner, Thorne & Wheeler, Gravitation (1973), ch. 2."
+author: metric-forge
