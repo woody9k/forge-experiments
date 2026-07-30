@@ -1,4 +1,0 @@
-[forge.plugins]
-geometry = forge_geometry.plugin:plugin
-matter = forge_matter.plugin:plugin
-pendulum = forge_pendulum.plugin:plugin

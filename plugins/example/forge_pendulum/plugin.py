@@ -41,6 +41,13 @@ def _register(registry) -> None:
     registry.add_persistence_metadata(PendulumBase.metadata)
     registry.add_sage_pack(_pack())
 
+    # How this domain runs a comparative experiment inside the governed
+    # research loop (platform backlog P-4).  The loop drives it; the
+    # platform keeps the state machine, gates, idempotency and audit.
+    from forge_pendulum.app.protocol import PROTOCOL
+
+    registry.add_experiment_protocol(PROTOCOL)
+
     def _mcp_tools():
         # Lazy: MCP tools bind SAGE tool names, which exist only after every
         # plugin has registered and the allowlist sync has run.

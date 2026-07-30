@@ -1,0 +1,7 @@
+# Build inputs and artifacts, never sources of truth.
+build/
+dist/
+*.egg-info/
+__pycache__/
+*.pyc
+.venv/

@@ -202,9 +202,10 @@ def test_reserved_id_completes_after_a_simulated_crash(env):
     assert result["experiment_id"] == reserved
     assert len(gstore().list_experiments()) == 1  # completed, never duplicated
 
-    # And the coordinator can now prove ownership of it from the ledger alone.
-    verified = evidence.verify_geometry_experiment(
-        prog, reserved, plan_id=plan_id, step="baseline")
+    # And the ledger alone proves which plan produced it.
+    assert store.idempotent_object_id(
+        prog.id, f"plan:{plan_id}:experiment:baseline") == reserved
+    verified = _geometry_tools().verify_geometry_bundle(reserved)
     assert verified["manifest"]["experiment"]["id"] == reserved
 
 
@@ -218,38 +219,42 @@ def test_malformed_reserved_id_is_refused(env):
 
 # ------------------------------------------------- coordinator re-verification
 
-def test_evidence_verification_rejects_unowned_and_tampered_bundles(env):
+def test_bundle_verification_rejects_a_tampered_bundle(env):
+    """Geometry re-verifies its own bundles: the manifest is re-read from
+    disk and every checksum re-derived, so a byte changed after the fact
+    invalidates the result rather than going unnoticed.
+
+    Geometry contributes no ``ExperimentProtocol`` yet, so it cannot supply
+    evidence to a SAGE claim (see the platform backlog); the link-building
+    and re-verification path is exercised by the platform's own governed-loop
+    test against its synthetic domain.
+    """
     store, tools, evidence, _ = env
     from apps.coordinator.bundles import experiments_dir
     from forge_domain.entities import new_id
     prog = _program(store, allowed=[_metric_hash()])
-    plan_id = new_id()
     reserved = new_id()
-    store.record_idempotent(prog.id, f"plan:{plan_id}:experiment:baseline",
-                            "experiment", reserved)
     _submit(tools, prog, metric_name="minkowski", experiment_id=reserved)
 
-    # Ownership: the ledger, not the caller, decides which plan produced it.
-    with pytest.raises(evidence.EvidenceError, match="ownership check failed"):
-        evidence.verify_geometry_experiment(prog, reserved, plan_id=new_id(),
-                                            step="baseline")
+    verified = _geometry_tools().verify_geometry_bundle(reserved)
+    assert verified["artifact_path"] == f"{reserved}/manifest.json"
+    assert verified["manifest_checksum"]
 
-    # A link built from the verified artifact re-verifies from scratch...
-    from forge_sage import EvidenceRelationship
-    link = evidence.build_verified_link(
-        prog, new_id(), reserved, EvidenceRelationship.SUPPORTS,
-        plan_id=plan_id, step="baseline", source_type="experiment")
-    assert link.artifact_path == f"{reserved}/manifest.json"
-    evidence.verify_evidence_link(prog, link)
-
-    # ...and stops re-verifying the moment the bytes change.
     bundle = experiments_dir() / reserved
     target = next(p for p in bundle.iterdir()
                   if p.is_file() and p.name != "manifest.json"
                   and p.name in _checksummed(bundle))
     target.write_text("tampered")
     with pytest.raises(evidence.EvidenceError, match="checksum mismatch"):
-        evidence.verify_evidence_link(prog, link)
+        _geometry_tools().verify_geometry_bundle(reserved)
+
+
+def _geometry_tools():
+    """Geometry's own tool module, resolved per call (these suites purge
+    plugin app modules between tests to get a fresh engine)."""
+    import importlib
+
+    return importlib.import_module("forge_geometry.app.sage_tools")
 
 
 def _checksummed(bundle) -> set[str]:
