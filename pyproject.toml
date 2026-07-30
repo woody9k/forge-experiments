@@ -70,7 +70,11 @@ packages = [
 # limitations P8 lesson, applied here from the start).
 forge_geometry = ["metrics/*/*.yaml", "schemas/*.json", "sage/*.md", "ui/*.js"]
 forge_matter = ["data/*.yaml", "schemas/*.json", "sage/*.md", "ui/*.js"]
-forge_pendulum = ["sage/*.md", "ui/*.js"]
+# Alembic branches are non-module files: undeclared, the wheel ships
+# without them and the plugin silently has no schema on a server
+# database (platform P-5, and the packaging lesson from P8).
+forge_pendulum = ["sage/*.md", "ui/*.js", "migrations/*.py",
+                  "migrations/*.mako", "migrations/versions/*.py"]
 
 [tool.pytest.ini_options]
 testpaths = ["plugins", "integration-tests"]
