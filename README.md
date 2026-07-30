@@ -54,7 +54,7 @@ Schwarzschild experiment runs to 5/5 passing validations with visualization
 data, the matter path serves and simulates, and **112 plugin tests pass**.
 
 The platform cutover has landed, so this repository is the only home of the
-domains. All 173 plugin and integration tests pass against an installed
+domains. All 176 plugin and integration tests pass against an installed
 platform, and all three plugins pass the conformance harness. Matter and
 pendulum each contribute an `ExperimentProtocol`, so a SAGE research program
 can be *about* either domain; geometry does not yet (platform backlog P-8).

@@ -36,6 +36,13 @@ dev = [
 # How Forge finds these plugins.  Nothing else registers them: the platform
 # discovers `forge.plugins` entry points at startup and isolates failures
 # per plugin, so a broken or incompatible plugin here cannot stop Forge.
+# Worker-side contributions (platform backlog P-3). A fabric agent has no
+# database and no coordinator, so it reads this group rather than building
+# the plugin registry: self-test suites and job executors only.
+[project.entry-points."forge.worker"]
+geometry = "forge_geometry.worker"
+pendulum = "forge_pendulum.worker"
+
 [project.entry-points."forge.plugins"]
 geometry = "forge_geometry.plugin:plugin"
 matter = "forge_matter.plugin:plugin"
