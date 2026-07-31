@@ -21,8 +21,9 @@ import sympy as sp
 
 from forge_math.diagnostics import (
     DiagnosticsError,
-    circular_orbit_radii,
     evaluate_tidal,
+    evaluate_tidal_normalised,
+    schwarzschild_landmark_radii,
     trace_geodesic,
 )
 from forge_math.pipeline import compute_geometry
@@ -74,16 +75,24 @@ def test_schwarzschild_tidal_matches_the_closed_form(r_value):
     at = {"r": r_value, "theta": math.pi / 2, "t": 0.0, "phi": 0.0}
     report = evaluate_tidal(geo.riemann_up, g, coords, u, at, vacuum=True)
 
-    expected_radial = -2 * mass / r_value**3
-    expected_transverse = mass / r_value**3
+    # principal = eigenvalues of -E, i.e. relative accelerations:
+    # radial STRETCH +2M/r³, transverse SQUEEZE -M/r³ (MTW §31.2).
+    expected_radial = 2 * mass / r_value**3
+    expected_transverse = -mass / r_value**3
 
+    assert report.observer_norm == pytest.approx(-1.0, abs=1e-10)
     assert report.trace == pytest.approx(0.0, abs=1e-12)
-    # One stretch, two squeezes, and a zero along the worldline itself.
-    nonzero = sorted(x for x in report.principal if abs(x) > 1e-14)
-    assert nonzero[0] == pytest.approx(expected_radial, rel=1e-8)
+    # Threshold relative to the field itself, not an absolute 1e-14 that
+    # would silently reclassify everything at large r or small M.
+    cut = 1e-6 * abs(expected_radial)
+    nonzero = sorted(x for x in report.principal if abs(x) > cut)
+    assert len(nonzero) == 3, report.principal
+    assert nonzero[0] == pytest.approx(expected_transverse, rel=1e-8)
     assert nonzero[1] == pytest.approx(expected_transverse, rel=1e-8)
-    assert nonzero[2] == pytest.approx(expected_transverse, rel=1e-8)
-    assert report.max_magnitude == pytest.approx(abs(expected_radial), rel=1e-8)
+    assert nonzero[2] == pytest.approx(expected_radial, rel=1e-8)
+    # Signed, so an overall sign flip of E cannot pass.
+    assert max(report.principal) == pytest.approx(expected_radial, rel=1e-8)
+    assert report.max_magnitude == pytest.approx(expected_radial, rel=1e-8)
 
 
 def test_tidal_magnitude_scales_as_inverse_r_cubed():
@@ -162,10 +171,63 @@ def test_a_circular_orbit_stays_circular():
 
 
 def test_landmark_radii_are_the_published_ones():
-    """Photon sphere 3M, ISCO 6M, horizon 2M — Wald §6.3."""
-    assert circular_orbit_radii(1.0) == {"photon_sphere": 3.0, "isco": 6.0,
-                                         "horizon": 2.0}
-    assert circular_orbit_radii(2.5)["isco"] == 15.0
+    """Photon sphere 3M, ISCO 6M, horizon 2M — Wald §6.3.
+
+    On its own this asserts literals against themselves; its value is as the
+    *reference* side of ``test_the_tracer_reproduces_the_isco``, which is
+    where the real check lives.
+    """
+    assert schwarzschild_landmark_radii(1.0) == {
+        "photon_sphere": 3.0, "isco": 6.0, "horizon": 2.0}
+    assert schwarzschild_landmark_radii(2.5)["isco"] == 15.0
+
+
+def test_the_radial_epicyclic_period_matches_the_closed_form():
+    """The sharp cross-check: perturb a circular orbit and measure how long
+    the radial oscillation takes, against the published epicyclic frequency
+
+        κ² = (M/r³)(1 − 6M/r)          [coordinate time]
+
+    Neither side is computed from the other — the closed form comes from the
+    effective-potential analysis (Wald §6.3), the measurement from
+    integrating the Christoffels — so agreement is evidence rather than
+    tautology. It also pins the ISCO implicitly: κ → 0 exactly at r = 6M,
+    which is *why* the orbit stops being stable there.
+
+    Note the time variable. κ above is per unit **coordinate** time; the
+    tracer integrates proper time, so the predicted proper period is
+    (2π/κ)·(dτ/dt). Comparing against the coordinate-time period instead
+    gives a 13% error at r = 12M that shrinks with radius — which looks
+    exactly like a plausible numerical artefact and is not one.
+    """
+    import numpy as np
+
+    g, coords, _ = _schwarzschild(1.0)
+    geo = compute_geometry(g, coords)
+
+    for r0 in (12.0, 20.0):
+        omega = math.sqrt(1.0 / r0**3)              # Ω² = M/r³
+        f = 1 - 2.0 / r0
+        t_dot = 1.0 / math.sqrt(f - r0**2 * omega**2)
+        result = trace_geodesic(
+            geo.christoffel, g, coords,
+            x0=[0.0, r0 * 1.0005, math.pi / 2, 0.0],   # 0.05% radial offset
+            v0=[t_dot, 0.0, 0.0, omega * t_dot],
+            tau_max=3000.0, steps=30000)
+        assert result.quality == "converged", result.warnings
+
+        tau = np.array(result.tau)
+        radius = np.array([p[1] for p in result.position])
+        slope = np.diff(radius)
+        peaks = [i for i in range(1, len(slope))
+                 if slope[i - 1] > 0 >= slope[i]]
+        assert len(peaks) >= 2, "no radial oscillation to measure"
+        measured = float(np.mean(np.diff(tau[peaks])))
+
+        kappa = math.sqrt((1.0 / r0**3) * (1 - 6.0 / r0))
+        predicted = (2 * math.pi / kappa) / t_dot     # → proper time
+        assert measured == pytest.approx(predicted, rel=0.01), (
+            f"r={r0}: measured {measured:.2f}, predicted {predicted:.2f}")
 
 
 def test_an_orbit_inside_the_isco_is_not_stable():
@@ -187,5 +249,111 @@ def test_an_orbit_inside_the_isco_is_not_stable():
         tau_max=400.0, steps=3000)
 
     radii = [p[1] for p in result.position]
+    assert result.quality in ("converged", "drifting"), result.warnings
     assert max(radii) - r0 > 0.05 * r0, (
         "a perturbed orbit inside the ISCO should run away, not stay put")
+
+
+# ----------------------------------------------- off-diagonal (shift) metrics
+
+def test_a_metric_with_a_shift_vector_is_handled():
+    """Every test above uses a diagonal metric and an observer whose only
+    non-zero component is u^t — which excludes the entire motivating use
+    case, because a warp metric's whole content is its **shift vector** and
+    that makes g_ti ≠ 0.
+
+    A flat metric written in a boosted/shifted chart is the right probe: the
+    curvature is identically zero, so any non-zero tidal field is the
+    machinery mishandling off-diagonal terms rather than physics.
+    """
+    t, x, y, z = sp.symbols("t x y z", real=True)
+    beta = sp.Rational(1, 3)                       # constant shift
+    # ds² = -dt² + (dx - β dt)² + dy² + dz² — flat, but g_tx ≠ 0.
+    g = sp.Matrix([
+        [-1 + beta**2, -beta, 0, 0],
+        [-beta, 1, 0, 0],
+        [0, 0, 1, 0],
+        [0, 0, 0, 1]])
+    coords = [t, x, y, z]
+    geo = compute_geometry(g, coords)
+
+    # Eulerian observer: u^μ ∝ (1, β, 0, 0) is unit timelike here.
+    u = [1, beta, 0, 0]
+    report = evaluate_tidal(geo.riemann_up, g, coords, u,
+                            {"t": 0.0, "x": 0.0, "y": 0.0, "z": 0.0},
+                            vacuum=True)
+    assert report.observer_norm == pytest.approx(-1.0, abs=1e-12)
+    assert report.max_magnitude == pytest.approx(0.0, abs=1e-12)
+
+
+def test_a_shifted_chart_gives_the_same_tidal_field_as_the_static_one():
+    """Coordinate invariance, on a curved spacetime with off-diagonal terms.
+
+    Painlevé–Gullstrand Schwarzschild has g_tr ≠ 0 and no horizon
+    coordinate singularity. A free-falling observer there must see the same
+    principal tidal accelerations as the static-chart calculation gives at
+    the same radius — the tidal tensor is a tensor, and this is the test
+    that the off-diagonal path actually respects that.
+    """
+    t, r, th, ph = sp.symbols("t r theta phi", real=True)
+    M = sp.Integer(1)
+    beta = sp.sqrt(2 * M / r)                       # infall velocity
+    g = sp.Matrix([
+        [-(1 - 2 * M / r), beta, 0, 0],
+        [beta, 1, 0, 0],
+        [0, 0, r**2, 0],
+        [0, 0, 0, r**2 * sp.sin(th) ** 2]])
+    coords = [t, r, th, ph]
+    geo = compute_geometry(g, coords)
+
+    # Rain observer: falls from rest at infinity; u = (1, -β, 0, 0).
+    u = [1, -beta, 0, 0]
+    r_value = 10.0
+    report = evaluate_tidal(
+        geo.riemann_up, g, coords, u,
+        {"r": r_value, "theta": math.pi / 2, "t": 0.0, "phi": 0.0},
+        vacuum=True)
+
+    # Same closed form as the static observer: radial stretch 2M/r³.
+    assert report.observer_norm == pytest.approx(-1.0, abs=1e-10)
+    assert max(report.principal) == pytest.approx(2.0 / r_value**3, rel=1e-8)
+    assert report.trace == pytest.approx(0.0, abs=1e-12)
+
+
+# ------------------------------------------------------ observer validation
+
+def test_an_unnormalised_observer_is_refused():
+    """E is quadratic in u, so a mis-scaled observer yields a *plausible*
+    magnitude that is wrong by the square of the error — and the vacuum
+    trace cannot catch it, because tr E = R_αβ uᵃuᵝ vanishes for any u where
+    R_αβ = 0. It has to be checked directly."""
+    g, coords, M = _schwarzschild(1.0)
+    geo = compute_geometry(g, coords)
+    at = {"r": 10.0, "theta": math.pi / 2, "t": 0.0, "phi": 0.0}
+
+    correct = [1 / sp.sqrt(1 - 2 * M / coords[1]), 0, 0, 0]
+    for bad, why in [([5 / sp.sqrt(1 - 2 * M / coords[1]), 0, 0, 0], "scaled 5x"),
+                     ([1, 0, 0, 0], "forgot the lapse"),
+                     ([0, 1, 0, 0], "spacelike")]:
+        with pytest.raises(DiagnosticsError, match="unit timelike"):
+            evaluate_tidal(geo.riemann_up, g, coords, bad, at)
+
+    # …and normalising on request gives the right answer.
+    fixed = evaluate_tidal_normalised(geo.riemann_up, g, coords,
+                                      [5, 0, 0, 0], at, vacuum=True)
+    reference = evaluate_tidal(geo.riemann_up, g, coords, correct, at,
+                               vacuum=True)
+    assert fixed.max_magnitude == pytest.approx(reference.max_magnitude, rel=1e-9)
+
+
+def test_a_degenerate_chart_raises_the_diagnostics_error():
+    """On the polar axis g_φφ = r² sin²θ = 0 and the metric cannot be
+    inverted. That is a routine coordinate degeneracy of every spherical
+    chart, so it must arrive as DiagnosticsError rather than a raw
+    LinAlgError escaping the contract."""
+    g, coords, M = _schwarzschild(1.0)
+    geo = compute_geometry(g, coords)
+    u = [1 / sp.sqrt(1 - 2 * M / coords[1]), 0, 0, 0]
+    with pytest.raises(DiagnosticsError, match="degenerate"):
+        evaluate_tidal(geo.riemann_up, g, coords, u,
+                       {"r": 10.0, "theta": 0.0, "t": 0.0, "phi": 0.0})
