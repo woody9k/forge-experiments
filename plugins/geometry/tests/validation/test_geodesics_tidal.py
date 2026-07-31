@@ -314,10 +314,22 @@ def test_a_shifted_chart_gives_the_same_tidal_field_as_the_static_one():
         {"r": r_value, "theta": math.pi / 2, "t": 0.0, "phi": 0.0},
         vacuum=True)
 
-    # Same closed form as the static observer: radial stretch 2M/r³.
+    # Compare against the *static chart*, computed here rather than against
+    # a hardcoded constant — otherwise this tests one number, not invariance.
+    g_static, coords_static, M_static = _schwarzschild(1.0)
+    geo_static = compute_geometry(g_static, coords_static)
+    static = evaluate_tidal(
+        geo_static.riemann_up, g_static, coords_static,
+        [1 / sp.sqrt(1 - 2 * M_static / coords_static[1]), 0, 0, 0],
+        {"r": r_value, "theta": math.pi / 2, "t": 0.0, "phi": 0.0},
+        vacuum=True)
+
     assert report.observer_norm == pytest.approx(-1.0, abs=1e-10)
-    assert max(report.principal) == pytest.approx(2.0 / r_value**3, rel=1e-8)
     assert report.trace == pytest.approx(0.0, abs=1e-12)
+    # The whole spectrum, not just the largest: a wrong transverse eigenvalue
+    # would otherwise pass.
+    assert report.principal == pytest.approx(static.principal, abs=1e-12)
+    assert max(report.principal) == pytest.approx(2.0 / r_value**3, rel=1e-8)
 
 
 # ------------------------------------------------------ observer validation
@@ -357,3 +369,75 @@ def test_a_degenerate_chart_raises_the_diagnostics_error():
     with pytest.raises(DiagnosticsError, match="degenerate"):
         evaluate_tidal(geo.riemann_up, g, coords, u,
                        {"r": 10.0, "theta": 0.0, "t": 0.0, "phi": 0.0})
+
+
+
+# ------------------------------------------------- integration-error honesty
+
+def test_drift_is_reported_relative_to_the_conserved_norm():
+    """A regression this file did not previously catch.
+
+    An affine-invariance fix once scaled the drift by the largest term of the
+    quadratic form. For a boosted observer that term is ~v², so a real 0.3%
+    error in g(u,u) was reported as 6e-8 and labelled "converged" — the
+    deflation growing with boost, i.e. worst for exactly the relativistic
+    worldlines a warp analysis needs. The statistic must stay tied to the
+    conserved quantity it claims to measure.
+    """
+    g, coords, _ = _schwarzschild(1.0)
+    geo = compute_geometry(g, coords)
+
+    r0 = 10.0
+    f = 1 - 2.0 / r0
+    for v_r in (0.0, 50.0, 200.0):
+        # Normalise so g(u,u) = -1 with a large radial component.
+        t_dot = math.sqrt((1 + v_r**2 / f) / f)
+        result = trace_geodesic(
+            geo.christoffel, g, coords,
+            x0=[0.0, r0, math.pi / 2, 0.0], v0=[t_dot, v_r, 0.0, 0.0],
+            tau_max=0.5, steps=200)
+        if result.quality == "failed":
+            continue                     # left the chart; nothing to compare
+        actual = max(abs(n - result.norm[0]) for n in result.norm)
+        assert result.norm_drift == pytest.approx(actual, rel=1e-9), (
+            f"v_r={v_r}: drift {result.norm_drift:.2e} does not reflect the "
+            f"actual norm error {actual:.2e}")
+
+
+def test_a_null_geodesics_label_does_not_depend_on_its_affine_scale():
+    """The same photon, parametrised twice, must get the same verdict."""
+    g, coords, _ = _schwarzschild(1.0)
+    geo = compute_geometry(g, coords)
+    r0 = 20.0
+    f = 1 - 2.0 / r0
+
+    qualities, drifts = [], []
+    for k in (1.0, 1000.0):
+        # Radial null ray: -f ṫ² + ṙ²/f = 0.
+        result = trace_geodesic(
+            geo.christoffel, g, coords,
+            x0=[0.0, r0, math.pi / 2, 0.0],
+            v0=[k / f, k, 0.0, 0.0], tau_max=1.0, steps=200)
+        qualities.append(result.quality)
+        drifts.append(result.norm_drift)
+    # The *verdict* must not depend on parametrisation — that is the bug
+    # this pins, where a photon flipped converged→drifting purely by
+    # rescaling its affine parameter.
+    assert qualities[0] == qualities[1], qualities
+    assert all(q == "converged" for q in qualities), qualities
+    # The raw drift values are not expected to match: solve_ivp's atol is an
+    # absolute tolerance and does not transform with the affine scale, so the
+    # integration error itself differs. Both must simply be far below the
+    # threshold the label is drawn at.
+    assert all(d < 1e-6 for d in drifts), drifts
+
+
+def test_a_geodesic_starting_off_the_chart_fails_instead_of_hanging():
+    """At r = 2M the Christoffels are singular. Previously solve_ivp shrank
+    the step below denormal and never returned."""
+    g, coords, _ = _schwarzschild(1.0)
+    geo = compute_geometry(g, coords)
+    with pytest.raises(DiagnosticsError, match="initial point"):
+        trace_geodesic(geo.christoffel, g, coords,
+                       x0=[0.0, 2.0, math.pi / 2, 0.0],
+                       v0=[1.0, 0.0, 0.0, 0.0], tau_max=1.0, steps=10)

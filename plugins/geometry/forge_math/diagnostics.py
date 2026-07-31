@@ -37,9 +37,11 @@ Known answers used for validation (see the tests):
 * Schwarzschild, static observer, orthonormal frame — the classic
   ``diag(−2M/r³, +M/r³, +M/r³)`` radial-stretch/transverse-squeeze pattern,
   trace zero.
-* Schwarzschild circular orbits — the innermost stable one at r = 6M, and
-  the photon sphere at r = 3M, both recovered from the effective potential
-  built out of the same Christoffels.
+* Schwarzschild's radial epicyclic period, measured from a traced orbit
+  against the closed form 2π/κ with κ² = (M/r³)(1 − 6M/r). Neither side is
+  computed from the other, and it pins the ISCO implicitly because κ → 0
+  exactly at r = 6M. ``schwarzschild_landmark_radii`` supplies those radii
+  as published literals — it derives nothing, and says so.
 
 Everything here is a *diagnostic*: it reports numbers with an explicit
 quality label and never decides whether a spacetime is acceptable.
@@ -176,14 +178,7 @@ def evaluate_tidal(riemann_up: list, metric: sp.Matrix, coords: list[sp.Symbol],
     n = metric.shape[0]
     warnings: list[str] = []
 
-    try:
-        g_num = np.array([[float(sp.N(metric[i, j].subs(subs))) for j in range(n)]
-                          for i in range(n)], dtype=float)
-    except (TypeError, ValueError) as exc:
-        raise DiagnosticsError(
-            f"metric did not evaluate to numbers at {at}: {exc}") from exc
-    if not np.all(np.isfinite(g_num)):
-        raise DiagnosticsError(f"metric is not finite at {at}")
+    g_num = _evaluate_matrix(metric, subs, n, "metric", at)
 
     u_num = _evaluate_vector(four_velocity, subs, n, "4-velocity")
     u_norm = float(u_num @ g_num @ u_num)
@@ -192,8 +187,8 @@ def evaluate_tidal(riemann_up: list, metric: sp.Matrix, coords: list[sp.Symbol],
             f"4-velocity is not a unit timelike vector at {at}: "
             f"g(u,u) = {u_norm:.6g}, expected -1. E is quadratic in u, so an "
             f"un-normalised observer yields a plausible tidal magnitude that "
-            f"is wrong by the square of the error — pass normalise=True to "
-            f"evaluate_tidal_normalised if you want it fixed for you.")
+            f"is wrong by the square of the error. Call "
+            f"evaluate_tidal_normalised() if you want it rescaled for you.")
 
     E = tidal_tensor_expr(riemann_up, metric, four_velocity)
     try:
@@ -221,7 +216,18 @@ def evaluate_tidal(riemann_up: list, metric: sp.Matrix, coords: list[sp.Symbol],
         ) from exc
 
     mixed = g_inv @ E_num
-    eigenvalues = np.linalg.eigvals(mixed)
+    if not np.all(np.isfinite(mixed)):
+        # inv() succeeds on a subnormal-but-nonzero g_φφ near the polar axis
+        # and returns inf; eigvals then raises LinAlgError straight through
+        # the contract. Same degeneracy, same answer required.
+        raise DiagnosticsError(
+            f"the mixed tidal tensor is not finite at {at}; the chart is "
+            f"degenerate or catastrophically ill-conditioned here")
+    try:
+        eigenvalues = np.linalg.eigvals(mixed)
+    except np.linalg.LinAlgError as exc:
+        raise DiagnosticsError(
+            f"tidal eigenvalues could not be computed at {at}: {exc}") from exc
     scale = max(float(np.max(np.abs(eigenvalues.real))), 1e-300)
     if float(np.max(np.abs(eigenvalues.imag))) > 1e-9 * scale:
         # E is self-adjoint on the space orthogonal to a unit timelike u, so
@@ -266,8 +272,9 @@ def evaluate_tidal_normalised(riemann_up: list, metric: sp.Matrix,
     """
     subs = _resolve_point(coords, at)
     n = metric.shape[0]
-    g_num = np.array([[float(sp.N(metric[i, j].subs(subs))) for j in range(n)]
-                      for i in range(n)], dtype=float)
+    # Same guarded path as evaluate_tidal: an unguarded copy here re-created
+    # the very escape (raw TypeError at r = 2M) that the contract forbids.
+    g_num = _evaluate_matrix(metric, subs, n, "metric", at)
     u_num = _evaluate_vector(four_velocity, subs, n, "4-velocity")
     norm = float(u_num @ g_num @ u_num)
     if norm >= 0:
@@ -278,13 +285,39 @@ def evaluate_tidal_normalised(riemann_up: list, metric: sp.Matrix,
     return evaluate_tidal(riemann_up, metric, coords, scaled, at, **kwargs)
 
 
+def _evaluate_matrix(matrix: sp.Matrix, subs: dict, n: int, label: str,
+                     at: dict) -> np.ndarray:
+    """Evaluate an n×n symbolic matrix to finite floats, or raise."""
+    try:
+        out = np.array([[complex(sp.N(matrix[i, j].subs(subs))) for j in range(n)]
+                        for i in range(n)])
+    except (TypeError, ValueError) as exc:
+        raise DiagnosticsError(
+            f"{label} did not evaluate to numbers at {at}: {exc}") from exc
+    if np.any(np.abs(out.imag) > 0):
+        # Inside a horizon the static chart goes complex. A real part is not
+        # an answer there, it is a different spacetime region.
+        raise DiagnosticsError(
+            f"{label} is complex at {at}; this chart does not cover this "
+            f"event (e.g. inside r = 2M in Schwarzschild coordinates)")
+    real = out.real
+    if not np.all(np.isfinite(real)):
+        raise DiagnosticsError(f"{label} is not finite at {at}")
+    return real
+
+
 def _evaluate_vector(vector: list, subs: dict, n: int, label: str) -> np.ndarray:
     if len(vector) != n:
         raise DiagnosticsError(
             f"{label} has {len(vector)} components, metric is {n}-D")
     try:
-        out = np.array([float(sp.N(sp.sympify(c).subs(subs))) for c in vector],
-                       dtype=float)
+        # No sympify: a caller-supplied string would go through SymPy's
+        # eval-based parser, and untrusted expressions belong in
+        # forge_sdk.expressions (principle 5). Components must already be
+        # SymPy objects or numbers.
+        out = np.array(
+            [float(sp.N(c.subs(subs))) if hasattr(c, "subs") else float(c)
+             for c in vector], dtype=float)
     except (TypeError, ValueError) as exc:
         raise DiagnosticsError(
             f"{label} did not evaluate to numbers: {exc}") from exc
@@ -351,9 +384,30 @@ def trace_geodesic(christoffel: list, metric: sp.Matrix, coords: list[sp.Symbol]
             acc[a] = total
         return np.concatenate([v, acc])
 
+    # Evaluate the RHS once before integrating. A non-finite derivative at
+    # the initial point makes solve_ivp shrink the step below denormal and
+    # never return — "fail loudly" turning into "hang silently", which is
+    # worse than either.
+    y0 = np.concatenate([x0, v0])
+    try:
+        initial = rhs(0.0, y0)
+    except Exception as exc:      # noqa: BLE001 — a bad chart, not a crash
+        raise DiagnosticsError(
+            f"the geodesic equation is not evaluable at the initial point "
+            f"{list(x0)}: {exc}") from exc
+    if not np.all(np.isfinite(initial)):
+        raise DiagnosticsError(
+            f"the geodesic equation is not finite at the initial point "
+            f"{list(x0)}; start somewhere the chart covers")
+
     tau_eval = np.linspace(0.0, tau_max, steps)
-    sol = solve_ivp(rhs, (0.0, tau_max), np.concatenate([x0, v0]),
+    sol = solve_ivp(rhs, (0.0, tau_max), y0,
                     t_eval=tau_eval, rtol=rtol, atol=atol, method="DOP853")
+
+    if np.size(sol.y) == 0:
+        # scipy leaves sol.y as a plain [] when the very first step fails.
+        raise DiagnosticsError(
+            f"integration produced no steps: {sol.message}")
 
     warnings: list[str] = []
     if not sol.success:
@@ -402,7 +456,16 @@ def trace_geodesic(christoffel: list, metric: sp.Matrix, coords: list[sp.Symbol]
                                  "metric is singular somewhere on this path"])
 
     norm0 = norms[0]
-    scale = max(abs(norm0), max(scales), 1e-300)
+    # Scale by |norm0| when there is one, and only fall back to the
+    # quadratic-form scale for a null geodesic where norm0 == 0.
+    #
+    # An earlier attempt used max(|norm0|, max(scales)) to get affine
+    # invariance for photons. That silently destroyed the timelike case: for
+    # a boosted observer max(scales) ~ v², so a real 0.3% error in the
+    # conserved norm was reported as 6e-8 and labelled "converged" — worst
+    # for exactly the relativistic worldlines a warp analysis cares about.
+    # Both forms are affine-invariant; only this one is also meaningful.
+    scale = abs(norm0) if abs(norm0) > 1e-12 else max(max(scales), 1e-300)
     drift = max(abs(x - norm0) for x in norms) / scale
 
     if not sol.success:
