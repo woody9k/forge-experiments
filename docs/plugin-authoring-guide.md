@@ -47,7 +47,8 @@ pendulum = "forge_pendulum.plugin:plugin"
 | `add_sage_pack(pack)` | domain expertise composed into role prompts |
 | `add_selftest_suite(suite)` | what a worker must prove before running your work |
 | `add_task_type(task_type)` | a queue task the generic workers execute |
-| `add_persistence_metadata(metadata)` | tables you own |
+| `add_persistence_metadata(metadata)` | tables you own (pair it with `add_migrations`, below) |
+| `add_migrations(script_location)` | your own Alembic branch and version table |
 | `add_mcp_tools(tools_or_callable)` | the same tools over the MCP surface |
 | `add_ui_module(path, name)` | a browser module that injects your UI section |
 | `add_experiment_protocol(protocol)` | how SAGE runs a comparative experiment in your domain (below) |
@@ -223,7 +224,47 @@ validate types and ranges, reject ids that are not the shape you expect, and
 raise rather than coerce. Declare hard limits in `safety_policies` so an
 operator can read them on the Plugins page.
 
-## Packaging: the two traps everyone hits
+## Owning tables
+
+Contribute your SQLAlchemy metadata *and* your own Alembic branch:
+
+```python
+registry.add_persistence_metadata(PendulumBase.metadata)
+registry.add_migrations(str(Path(__file__).parent / "migrations"))
+```
+
+```
+forge_pendulum/migrations/
+  env.py            →  from forge_sdk.migrations import run_migrations
+                       run_migrations(target_metadata=PendulumBase.metadata)
+  script.py.mako
+  versions/0001_pendulum_runs.py
+```
+
+You get your own version table (`alembic_version_<plugin id>`), so your
+schema advances independently of the platform's: upgrading Forge never runs
+your migrations, and upgrading your plugin never touches core tables.
+`python -m apps.coordinator.migrate` runs the core chain first, then every
+installed plugin's branch.
+
+**Metadata alone is not enough.** It only creates tables on the SQLite
+development path, where the platform calls `create_all`. On PostgreSQL —
+which is what a real deployment runs — a plugin whose tables are in no
+migration has **no schema at all**, and every write fails with
+`relation "..." does not exist`. That is exactly how this was found.
+
+Two things to get right, both of which fail silently:
+
+* Resolve `script_location` from your **package**, not the working
+  directory, or it breaks the moment someone installs your wheel.
+* Declare the branch as package data (below), or the wheel ships without it.
+
+`forge_sdk.migrations.run_migrations` keeps `env.py` to two lines and stops
+you writing your head into `alembic_version`, which core owns — a branch
+that shared it would make the last one to run believe it had superseded the
+others.
+
+## Packaging: the traps everyone hits
 
 1. **Non-module files must be declared as package data**, or your wheel ships
    without them and the failure is silent. Prompts, JSON Schemas, bundled
@@ -231,8 +272,13 @@ operator can read them on the Plugins page.
 
    ```toml
    [tool.setuptools.package-data]
-   forge_pendulum = ["sage/*.md", "ui/*.js"]
+   forge_pendulum = ["sage/*.md", "ui/*.js", "migrations/*.py",
+                     "migrations/*.mako", "migrations/versions/*.py"]
    ```
+
+   Your Alembic branch is package data too. Undeclared, the wheel ships
+   without it and your plugin has no schema on a server database — with no
+   error until the first write.
 
    Resolve them with `importlib.resources`, never a path relative to the
    repository root, so a checkout and a wheel behave identically.
