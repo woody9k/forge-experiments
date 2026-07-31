@@ -57,4 +57,4 @@ The platform cutover has landed, so this repository is the only home of the
 domains. All 176 plugin and integration tests pass against an installed
 platform, and all three plugins pass the conformance harness. Matter and
 pendulum each contribute an `ExperimentProtocol`, so a SAGE research program
-can be *about* either domain; geometry does not yet (platform backlog P-8).
+can be *about* either domain; geometry does not yet (platform backlog P-9).
