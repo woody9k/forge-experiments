@@ -150,6 +150,79 @@ def get_experiments(limit: int = 100) -> list[dict]:
     return gstore.list_experiments(limit=min(limit, 500))
 
 
+# NOTE: declared *before* /{experiment_id} on purpose. FastAPI matches
+# routes in declaration order, so a literal segment registered after a
+# path-parameter route is unreachable — "summary" would be parsed as an
+# experiment id and 404.
+@router.get("/api/v1/experiments/summary")
+def get_experiment_summary(metric_name: str | None = None,
+                           limit: int = 200) -> dict:
+    """One row per completed run: its parameters and what it found.
+
+    Exists so a *comparison* is one request rather than N. Reading a
+    parameter study point-by-point through the single-run view is how a
+    27-point sweep stays 27 unrelated numbers instead of a scaling law —
+    the question "how does the requirement change as I turn this knob" is
+    the whole reason to run more than one.
+
+    Deliberately thin: the peak and total of the energy-density slice, the
+    per-condition minima, and how much of the slice violates. No scoring, no
+    ranking, no aggregate "goodness" — principle 7 keeps score vectors
+    whole, and choosing a winner is not this endpoint's business.
+    """
+    rows = []
+    for record in gstore.list_experiments():
+        if metric_name and record.get("metric_name") != metric_name:
+            continue
+        if record.get("status") != ExperimentStatus.COMPLETED.value:
+            continue
+        bundle = runner.experiments_dir() / record["id"]
+        manifest_path = bundle / "manifest.json"
+        if not manifest_path.exists():
+            continue
+        row = {"id": record["id"], "metric_name": record["metric_name"],
+               "parameter_values": record.get("parameter_values") or {},
+               "created_at": record.get("created_at"),
+               "conditions": {}, "energy_density": None}
+
+        ec_path = bundle / "energy_conditions.json"
+        if ec_path.exists():
+            for name, payload in json.loads(ec_path.read_text()).items():
+                row["conditions"][name] = {
+                    "status": payload.get("status"),
+                    "min_value": payload.get("min_value"),
+                    "violating_point_fraction":
+                        payload.get("violating_point_fraction"),
+                }
+
+        ed = bundle / "arrays" / "energy_density.npz"
+        if ed.exists():
+            with np.load(ed) as z:
+                rho = z["eulerian_energy_density"]
+            finite = rho[np.isfinite(rho)]
+            if finite.size:
+                negative = finite[finite < 0]
+                row["energy_density"] = {
+                    # Peak requirement at a point, and the integrated
+                    # negative part over the slice. The latter is *not*
+                    # comparable across runs whose grids differ in extent —
+                    # it is a sum over samples, not a proper-volume integral
+                    # (that is backlog B-18), and the UI says so.
+                    "min": float(finite.min()),
+                    "negative_sum": float(negative.sum()) if negative.size else 0.0,
+                    "negative_fraction": float(negative.size / finite.size),
+                    "resolution": list(rho.shape),
+                }
+        rows.append(row)
+        if len(rows) >= limit:
+            break
+
+    return {"experiments": rows, "count": len(rows),
+            "note": "negative_sum is a sample sum over each run's own grid, "
+                    "not a proper-volume integral; compare it only between "
+                    "runs with identical grids (backlog B-18)"}
+
+
 @router.get("/api/v1/experiments/{experiment_id}")
 def get_experiment(experiment_id: str) -> dict:
     exp = gstore.load_experiment(experiment_id)
