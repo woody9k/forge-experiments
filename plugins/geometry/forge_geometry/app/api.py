@@ -180,8 +180,17 @@ def get_experiment_summary(metric_name: str | None = None,
         manifest_path = bundle / "manifest.json"
         if not manifest_path.exists():
             continue
+        # Parameters come from the bundle manifest, not the list record:
+        # list_experiments() returns a summarised row that carries no
+        # parameter_values, so reading them from there produced a comparison
+        # table with an empty parameter column — every run looking identical,
+        # which is the same class of emptiness this endpoint exists to end.
+        # The manifest is the authoritative copy in any case: it is what the
+        # run actually executed with, checksummed alongside the results.
+        manifest = json.loads(manifest_path.read_text())
+        spec = manifest.get("experiment") or {}
         row = {"id": record["id"], "metric_name": record["metric_name"],
-               "parameter_values": record.get("parameter_values") or {},
+               "parameter_values": spec.get("parameter_values") or {},
                "created_at": record.get("created_at"),
                "conditions": {}, "energy_density": None}
 

@@ -236,3 +236,43 @@ def test_an_unknown_parameter_name_is_still_refused(client):
         "parameter_values": {"not_a_parameter": 1.0},
     })
     assert r.status_code == 422, r.text
+
+
+def test_the_summary_carries_the_parameters_each_run_used(client):
+    """A comparison table whose parameter column is empty compares nothing.
+
+    ``list_experiments()`` returns a summarised record with no
+    ``parameter_values``, so the summary endpoint reads them from the run's
+    own bundle manifest — which is also the authoritative copy, checksummed
+    beside the results it produced.
+    """
+    r = client.post("/api/v1/experiments", json={
+        "metric_name": "alcubierre",
+        "parameter_values": {"velocity": 0.4, "radius": 1.0,
+                             "wall_steepness": 6.0},
+        "grid": {"bounds": {"x": [-2, 2], "y": [-2, 2]},
+                 "resolution": {"x": 8, "y": 8},
+                 "slice_values": {"t": 0.0, "z": 0.0}},
+        "energy_conditions": {"conditions": ["NEC", "WEC"],
+                              "observers": [{"kind": "eulerian", "samples": 4}],
+                              "tolerance": 1e-9, "sample_points": 32},
+    })
+    assert r.status_code == 202, r.text
+    experiment_id = r.json()["id"]
+
+    summary = client.get("/api/v1/experiments/summary").json()
+    row = next((x for x in summary["experiments"] if x["id"] == experiment_id), None)
+    assert row is not None, "completed run missing from the summary"
+    assert row["parameter_values"] == {"velocity": 0.4, "radius": 1.0,
+                                       "wall_steepness": 6.0}
+    assert row["energy_density"]["min"] < 0        # Alcubierre needs negative energy
+    assert row["conditions"]["NEC"]["status"] == "confirmed_violation"
+
+
+def test_summary_is_reachable_and_not_read_as_an_experiment_id(client):
+    """FastAPI matches in declaration order, so a literal segment declared
+    after /{experiment_id} is unreachable — 'summary' would 404 as an
+    unknown experiment."""
+    r = client.get("/api/v1/experiments/summary")
+    assert r.status_code == 200, r.text
+    assert "experiments" in r.json()
