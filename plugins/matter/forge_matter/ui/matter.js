@@ -164,6 +164,7 @@ window.mcSimulate = mcSimulate; window.mcMutate = mcMutate; window.mcDetail = mc
 ForgeUI.registerSection({
   plugin: "matter",
   section: "matter",
+  label: "Matter Configurations",
   group: "matter",
   defaultPane: "configurations",
   panes: { configurations: loadMatter },  // casimir pane is a stateless calculator

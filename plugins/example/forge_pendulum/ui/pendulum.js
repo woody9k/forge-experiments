@@ -110,6 +110,7 @@ document.getElementById("pd-refresh").addEventListener("click", loadPendulumRuns
 ForgeUI.registerSection({
   plugin: "pendulum",
   section: "pendulum-lab",
+  label: "Pendulum Lab",
   group: "pendulum",
   defaultPane: "new-run",
   panes: { "new-run": () => {}, runs: loadPendulumRuns },
