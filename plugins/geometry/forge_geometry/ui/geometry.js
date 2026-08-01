@@ -248,7 +248,13 @@ async function loadResults() {
   }
   sel.onchange = renderResult;
   document.getElementById("r-refresh").onclick = renderResult;
-  if (sel.value) renderResult();
+  if (sel.value) { renderResult(); return; }
+  // No runs at all: an empty picker over empty tables is indistinguishable
+  // from a load failure. Say so, and point at the one click that fixes it.
+  document.getElementById("r-meta").innerHTML =
+    `<p>No runs yet. Open <b>Library</b>, pick a metric and choose
+     <b>run</b> — Schwarzschild with its default grid finishes in a few
+     seconds and gives you 5/5 known-answer validations to read here.</p>`;
 }
 
 // Live-follow a run: while the selected experiment is still pending, queued

@@ -150,12 +150,19 @@ async function mcDetail(id) {
 
 async function loadMatter() {
   const configs = await api("/matter/configurations?limit=30");
+  // An empty table showing only its headers reads as "something failed to
+  // load".  Say which of the two it is, and say what to do about it — this
+  // is the first thing a newcomer to the matter path sees.
   document.querySelector("#mc-list tbody").innerHTML = configs.map(c =>
     `<tr><td><code>${c.id.slice(0, 12)}</code></td><td>${c.name}</td>
      <td>${c.generation}</td><td>${c.validation_state}</td>
      <td><button onclick="mcSimulate('${c.id}')">simulate</button>
          <button onclick="mcMutate('${c.id}')">mutate ½a</button>
-         <button onclick="mcDetail('${c.id}')">detail</button></td></tr>`).join("");
+         <button onclick="mcDetail('${c.id}')">detail</button></td></tr>`).join("")
+    || `<tr><td colspan="5">No configurations yet. <b>Create demo plate
+        stack</b> above builds a two-plate Casimir apparatus — the worked
+        example from the design doc — which you can then simulate, mutate and
+        inspect.</td></tr>`;
 }
 window.mcSimulate = mcSimulate; window.mcMutate = mcMutate; window.mcDetail = mcDetail;
 
