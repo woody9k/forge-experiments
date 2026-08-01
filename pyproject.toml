@@ -83,4 +83,5 @@ markers = [
     "convergence: resolution-sensitivity tests",
     "slow: long-running symbolic computations",
     "postgres: needs a real PostgreSQL server (FORGE_TEST_POSTGRES_URL); skipped otherwise",
+    "auth: drives the real authentication gate; sets FORGE_AUTH itself (see conftest.py)",
 ]
