@@ -196,3 +196,43 @@ def test_schwarzschild_default_grid_gives_clean_energy_conditions(client, tmp_pa
     ec = json.loads((tmp_path / "experiments" / exp_id / "energy_conditions.json").read_text())
     for cond in ("NEC", "WEC", "SEC", "DEC"):
         assert ec[cond]["status"] == "no_violation_detected", ec[cond]
+
+
+def test_a_misnamed_request_field_is_refused(client):
+    """A typo in a top-level field must be a 422, not a defaulted run.
+
+    Pydantic ignores unknown fields by default. Sending ``parameters``
+    instead of ``parameter_values`` therefore produced a 202, a run with
+    every default substituted, and a green validation — an entire 27-point
+    parameter sweep that completed, validated, and answered nothing, because
+    all 27 points were the same default run.
+
+    The handler's own guard rejects an unknown parameter *name*; it cannot
+    see a misnamed *field*, because the field is discarded before the
+    handler runs. Hence extra="forbid" on the request model.
+    """
+    r = client.post("/api/v1/experiments", json={
+        "metric_name": "alcubierre",
+        "parameters": {"velocity": 0.5},          # the typo that cost 27 runs
+    })
+    assert r.status_code == 422, r.text
+    assert "parameters" in r.text
+
+    # The correct spelling still works and actually lands.
+    r = client.post("/api/v1/experiments", json={
+        "metric_name": "alcubierre",
+        "parameter_values": {"velocity": 0.5},
+    })
+    assert r.status_code == 202, r.text
+    stored = client.get(f"/api/v1/experiments/{r.json()['id']}").json()
+    assert stored["parameter_values"] == {"velocity": 0.5}
+
+
+def test_an_unknown_parameter_name_is_still_refused(client):
+    """The pre-existing guard, kept honest: a *known* field carrying an
+    unknown parameter name is a different error and must stay a 4xx."""
+    r = client.post("/api/v1/experiments", json={
+        "metric_name": "alcubierre",
+        "parameter_values": {"not_a_parameter": 1.0},
+    })
+    assert r.status_code == 422, r.text

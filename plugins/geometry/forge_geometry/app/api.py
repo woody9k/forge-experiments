@@ -14,7 +14,7 @@ import os
 import numpy as np
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from apps.coordinator import store
 import forge_geometry.app.store as gstore
@@ -86,6 +86,23 @@ def validate_metric_definition(raw: dict) -> dict:
 # -------------------------------------------------------------- experiments
 
 class ExperimentRequest(BaseModel):
+    """What to run, and over what.
+
+    ``extra="forbid"`` is the point of this docstring. Pydantic's default is
+    to *ignore* unknown fields, which meant a caller who wrote
+    ``{"parameters": {...}}`` instead of ``parameter_values`` got a 202, a
+    run with every default substituted, and a green validation — 27 of them,
+    in one sweep that answered nothing and looked like it had. The handler's
+    own guard below catches an unknown parameter *name*; it cannot catch a
+    misnamed field, because the field is gone before the handler runs.
+
+    Silently substituting defaults for input a caller believed they supplied
+    is the failure mode principle 2 exists to prevent, so an unrecognised
+    field is a 422 and not a surprise three hours later.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
     metric_name: str
     parameter_values: dict[str, float] = Field(default_factory=dict)
     grid: GridSpec | None = None
