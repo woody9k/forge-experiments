@@ -17,7 +17,29 @@ packages, this repository installed editable next to it).
 * **A real experiment completes across the boundary**: submit Schwarzschild
   with a grid → geometry pipeline runs → 5/5 validations pass →
   visualization data served. Matter materials and configurations likewise.
-* **112 plugin tests pass** against the installed platform.
+* **198 plugin and integration tests pass** against the installed platform
+  (2026-08-01).
+
+## Nothing automatic runs that suite — and it silently broke
+
+This repository has **no CI**. The platform's self-hosted runner is
+registered to `woody9k/warpforge` alone, so the cross-repo suite runs only
+when a person runs it.
+
+What that cost: authentication shipped in the platform on 2026-07-30 and is
+required by default. The platform turned it off for its own suite in
+`tests/conftest.py`; this repository had no equivalent, so **every test here
+that touches an authenticated route began returning `401`** — 32 failures
+spanning matter, pendulum and the entire SAGE vertical slice. Both READMEs
+went on claiming the cross-repo suite was green for two days, because the
+change landed in one repository and broke the suite in the other, and no
+machine was watching the second one.
+
+Fixed by a root `conftest.py` mirroring the platform's. The structural gap
+is still open: registering the same host as a second runner here would close
+it, and until someone does, **a platform change is not verified against the
+plugins until a human runs `pytest` in this checkout.** Treat that as a
+release step, not an assumption.
 
 ## What the platform cutover PR must change
 

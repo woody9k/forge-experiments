@@ -224,6 +224,32 @@ validate types and ranges, reject ids that are not the shape you expect, and
 raise rather than coerce. Declare hard limits in `safety_policies` so an
 operator can read them on the Plugins page.
 
+### The same actions over MCP
+
+`add_mcp_tools` puts your tools on the platform's MCP server. Two traps, both
+of which we walked into:
+
+**Pass a zero-argument callable, and build `McpTool`s with the real field
+names.** They are `tool_name=` (the registry tool you bind to), `arguments=`
+and `required=` — not `registry_tool_name=` or `schema=`. Because the
+callable is resolved lazily (deliberately: your tool names are not in the
+allowlist until every plugin has registered), a wrong signature is not a
+startup error. Ours sat in the tree passing its own tests until someone
+actually started the server. **Write one test that resolves the callable**;
+without it, the contribution is unexercised code.
+
+**You may extend the surface but never shadow a platform tool.** Rebinding
+something like `warp_forge.research.run.step` would let a domain redefine how
+the governed loop is driven, so it is refused. The platform used to gate
+*every* tool name against a fixed list written when geometry and matter lived
+in the platform repository — under which no plugin authored after the split
+could contribute an MCP tool at all, and one that tried took the whole
+surface down instead of being skipped. Fixed in warpforge #88; if your tools
+do not appear, check you are running a platform newer than that.
+
+MCP **resources** are not yet contributable — the platform still hardcodes
+geometry's and matter's readers (limitations P6). Tools only, for now.
+
 ## Owning tables
 
 Contribute your SQLAlchemy metadata *and* your own Alembic branch:
