@@ -18,6 +18,21 @@ const GEOMETRY_MARKUP = `
         <button data-pane="library" class="active">Library</button>
         <button data-pane="new-run">New Run</button>
         <button data-pane="results">Runs &amp; Results</button>
+        <button data-pane="compare">Compare Runs</button>
+      </div>
+
+      <div class="pane hidden" data-group="geometry" id="pane-geometry-compare">
+        <p class="viz-meta">Every completed run of one metric, side by side.
+          A single run tells you <em>this shape needs negative energy</em>;
+          comparing runs is what tells you <em>how much, and what makes it
+          worse</em>.</p>
+        <label>Metric <select id="cmp-metric"></select></label>
+        <label>Plot against
+          <select id="cmp-axis"></select>
+        </label>
+        <div id="cmp-chart"></div>
+        <div id="cmp-table"></div>
+        <p class="viz-meta" id="cmp-note"></p>
       </div>
 
       <div class="pane" data-group="geometry" id="pane-geometry-library">
@@ -479,15 +494,163 @@ function drawHeatmap(field) {
 
 
 
+
+// ------------------------------------------------------------ compare runs
+// One run answers "does this shape need negative energy". Comparing runs
+// answers "how much, and what makes it worse" — which is the only form the
+// question has a useful answer in. Deliberately shows the score *vector*
+// (per-condition minima, peak density, violating fraction) rather than
+// ranking runs: choosing a winner needs an objective function the platform
+// does not have yet (backlog B-16).
+
+let _cmpRows = [];
+
+async function loadCompare() {
+  const data = await api("/experiments/summary?limit=200", { quiet: true });
+  _cmpRows = (data && data.experiments) || [];
+  document.getElementById("cmp-note").textContent = (data && data.note) || "";
+
+  const metrics = [...new Set(_cmpRows.map(r => r.metric_name))].sort();
+  const mSel = document.getElementById("cmp-metric");
+  if (mSel.options.length !== metrics.length) {
+    mSel.innerHTML = metrics.map(m => `<option>${esc(m)}</option>`).join("");
+    mSel.onchange = renderCompare;
+  }
+  document.getElementById("cmp-axis").onchange = renderCompare;
+  renderCompare();
+}
+
+function renderCompare() {
+  const metric = document.getElementById("cmp-metric").value;
+  const rows = _cmpRows.filter(r => r.metric_name === metric
+                                    && r.energy_density);
+  const params = [...new Set(rows.flatMap(r => Object.keys(r.parameter_values)))];
+
+  const axisSel = document.getElementById("cmp-axis");
+  if ([...axisSel.options].map(o => o.value).join() !== params.join()) {
+    axisSel.innerHTML = params.map(p => `<option>${esc(p)}</option>`).join("");
+  }
+  const axis = axisSel.value || params[0];
+
+  if (!rows.length) {
+    document.getElementById("cmp-table").innerHTML =
+      `<p class="viz-meta">No completed runs of ${esc(metric)} carry an
+       energy-density field yet. A run needs a grid and energy conditions
+       requested — the New Run form asks for both.</p>`;
+    document.getElementById("cmp-chart").innerHTML = "";
+    return;
+  }
+
+  drawScalingChart(rows, axis);
+
+  const head = params.map(p => `<th>${esc(p)}</th>`).join("");
+  const body = rows
+    .slice()
+    .sort((a, b) => params.reduce((acc, p) =>
+      acc || (a.parameter_values[p] - b.parameter_values[p]), 0))
+    .map(r => {
+      const cells = params.map(p =>
+        `<td>${fmt(r.parameter_values[p])}</td>`).join("");
+      const worst = ["NEC", "WEC", "SEC", "DEC"]
+        .map(c => (r.conditions[c] || {}).min_value)
+        .filter(v => v !== undefined && v !== null);
+      const violated = Object.values(r.conditions)
+        .filter(c => c.status === "confirmed_violation").length;
+      return `<tr>${cells}
+        <td>${fmt(r.energy_density.min, 5)}</td>
+        <td>${worst.length ? fmt(Math.min(...worst), 4) : "—"}</td>
+        <td class="${violated ? "status-failed" : "status-passed"}">${violated}/4</td>
+        <td>${(r.energy_density.negative_fraction * 100).toFixed(0)}%</td>
+        <td><a href="#experiments/spacetime-geometry/results">${r.id.slice(0, 8)}</a></td>
+      </tr>`;
+    }).join("");
+
+  document.getElementById("cmp-table").innerHTML = `
+    <table>
+      <thead><tr>${head}
+        <th>peak &rho; (min)</th><th>worst condition min</th>
+        <th>conditions violated</th><th>slice negative</th><th>run</th>
+      </tr></thead>
+      <tbody>${body}</tbody>
+    </table>`;
+}
+
+function fmt(x, dp = 3) {
+  if (x === null || x === undefined || Number.isNaN(x)) return "—";
+  const a = Math.abs(x);
+  return (a !== 0 && (a < 1e-3 || a >= 1e5))
+    ? x.toExponential(2) : x.toFixed(dp);
+}
+
+function drawScalingChart(rows, axis) {
+  // Log-log, because the interesting content is the *exponent*: a straight
+  // line here is a power law, and its slope is the scaling exponent. Peak
+  // density is negative, so |rho| is plotted and the axis says so.
+  const pts = rows
+    .map(r => ({ x: r.parameter_values[axis],
+                 y: Math.abs(r.energy_density.min) }))
+    .filter(p => p.x > 0 && p.y > 0)
+    .sort((a, b) => a.x - b.x);
+  const host = document.getElementById("cmp-chart");
+  if (pts.length < 2) { host.innerHTML = ""; return; }
+
+  const W = 640, H = 300, m = { l: 70, r: 20, t: 16, b: 46 };
+  const lx = pts.map(p => Math.log10(p.x)), ly = pts.map(p => Math.log10(p.y));
+  const x0 = Math.min(...lx), x1 = Math.max(...lx);
+  const y0 = Math.min(...ly), y1 = Math.max(...ly);
+  const sx = v => m.l + (x1 === x0 ? 0.5 : (Math.log10(v) - x0) / (x1 - x0))
+                      * (W - m.l - m.r);
+  const sy = v => H - m.b - (y1 === y0 ? 0.5 : (Math.log10(v) - y0) / (y1 - y0))
+                      * (H - m.t - m.b);
+
+  // Least-squares slope in log-log = the power-law exponent.
+  const n = lx.length, mx = lx.reduce((a, b) => a + b) / n,
+        my = ly.reduce((a, b) => a + b) / n;
+  const num = lx.reduce((a, _, i) => a + (lx[i] - mx) * (ly[i] - my), 0);
+  const den = lx.reduce((a, _, i) => a + (lx[i] - mx) ** 2, 0);
+  const slope = den ? num / den : NaN;
+
+  const dots = pts.map(p =>
+    `<circle cx="${sx(p.x).toFixed(1)}" cy="${sy(p.y).toFixed(1)}" r="4"
+       fill="var(--accent)"><title>${axis}=${p.x}, |ρ|=${p.y.toExponential(3)}</title></circle>`
+  ).join("");
+  const ticks = [...new Set(pts.map(p => p.x))].map(v =>
+    `<text x="${sx(v).toFixed(1)}" y="${H - m.b + 16}" text-anchor="middle"
+       font-size="11" fill="var(--muted)">${v}</text>`).join("");
+  const yTicks = [y0, (y0 + y1) / 2, y1].map(l =>
+    `<text x="${m.l - 8}" y="${(sy(10 ** l) + 4).toFixed(1)}" text-anchor="end"
+       font-size="11" fill="var(--muted)">${(10 ** l).toExponential(1)}</text>`).join("");
+
+  host.innerHTML = `
+    <svg viewBox="0 0 ${W} ${H}" width="100%" style="max-width:${W}px">
+      <line x1="${m.l}" y1="${H - m.b}" x2="${W - m.r}" y2="${H - m.b}"
+            stroke="var(--line)"/>
+      <line x1="${m.l}" y1="${m.t}" x2="${m.l}" y2="${H - m.b}"
+            stroke="var(--line)"/>
+      ${dots}${ticks}${yTicks}
+      <text x="${(W / 2).toFixed(0)}" y="${H - 8}" text-anchor="middle"
+            font-size="12" fill="var(--muted)">${esc(axis)} (log scale)</text>
+      <text x="14" y="${(H / 2).toFixed(0)}" font-size="12" fill="var(--muted)"
+            transform="rotate(-90 14 ${(H / 2).toFixed(0)})"
+            text-anchor="middle">|peak &rho;| (log scale)</text>
+    </svg>
+    <p class="viz-meta">Slope in log&ndash;log is the power-law exponent:
+      <strong>|&rho;| &prop; ${esc(axis)}<sup>${slope.toFixed(2)}</sup></strong>
+      across ${pts.length} runs. Points at the same ${esc(axis)} differ in the
+      other parameters, so vertical spread is their influence.</p>`;
+}
+
 ForgeUI.registerSection({
   plugin: "geometry",
   section: "spacetime-geometry",
   group: "geometry",
   defaultPane: "library",
-  panes: { library: loadMetrics, "new-run": loadBuilder, results: loadResults },
+  panes: { library: loadMetrics, "new-run": loadBuilder, results: loadResults,
+           compare: loadCompare },
   legacy: {
     metrics: "experiments/spacetime-geometry/library",
     builder: "experiments/spacetime-geometry/new-run",
     results: "experiments/spacetime-geometry/results",
+    compare: "experiments/spacetime-geometry/compare",
   },
 });
