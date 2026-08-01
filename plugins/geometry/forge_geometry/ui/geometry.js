@@ -850,6 +850,10 @@ function drawScalingChart(rows, axis) {
 ForgeUI.registerSection({
   plugin: "geometry",
   section: "spacetime-geometry",
+  // What the Experiments menu shows. Without it the shell falls back to
+  // this section's <h2>, which is the same text — declaring it keeps the
+  // menu working even before the markup is injected.
+  label: "Spacetime Geometry",
   group: "geometry",
   defaultPane: "library",
   panes: { library: loadMetrics, "new-run": loadBuilder, results: loadResults,
