@@ -7,8 +7,21 @@
 // The plugin owns its markup as well as its behaviour: the shell's
 // index.html has no geometry elements, so installing or removing this plugin
 // is what puts the section on the page or takes it away.
+const GEOMETRY_STYLE = `
+  <style>
+    .explainer { margin: 0.75rem 0; border: 1px solid var(--line);
+                 border-radius: 6px; padding: 0.5rem 0.75rem; }
+    .explainer summary { cursor: pointer; font-weight: 600; }
+    .explainer h4 { margin: 0.9rem 0 0.3rem; font-size: 0.95rem; }
+    .explainer table { margin: 0.3rem 0; }
+    .explainer-list { margin: 0.3rem 0 0.6rem; padding-left: 1.1rem; }
+    .explainer-list li { margin-bottom: 0.35rem; }
+    .status-warn { color: var(--warn); }
+  </style>`;
+
 const GEOMETRY_MARKUP = `
     <section class="xsection" id="xsec-geometry">
+      ${GEOMETRY_STYLE}
       <h2>Spacetime Geometry</h2>
       <p class="viz-meta">Start from a spacetime shape — derive the matter it
         demands, then ask whether that matter is physically reasonable
@@ -26,6 +39,7 @@ const GEOMETRY_MARKUP = `
           A single run tells you <em>this shape needs negative energy</em>;
           comparing runs is what tells you <em>how much, and what makes it
           worse</em>.</p>
+        <div id="cmp-explainer"></div>
         <label>Metric <select id="cmp-metric"></select></label>
         <label>Plot against
           <select id="cmp-axis"></select>
@@ -74,7 +88,17 @@ const GEOMETRY_MARKUP = `
         <table id="r-ec"><thead>
           <tr><th>condition</th><th>status</th><th>min value</th><th>violating samples</th><th>tolerance</th></tr>
         </thead><tbody></tbody></table>
-        <h3 title="Energy density measured by observers at rest in the spatial grid (the Eulerian frame) — negative values are the signature of exotic matter.">Eulerian energy density</h3>
+        <div id="r-ec-note" class="viz-meta"></div>
+        <h3>Energy density map</h3>
+        <p class="viz-meta">Energy density as measured by observers sitting
+          still in the grid. Each pixel is one point in space on a 2-D slice
+          through the spacetime.
+          <strong>Negative (blue) is the signature of exotic matter</strong> —
+          a region where the geometry demands less than nothing be present.
+          <strong>Zero or positive is ordinary.</strong> Flat empty space is
+          zero everywhere; a star is positive in the middle and zero outside.
+          Hover any pixel for its value. Units are geometrized (G = c = 1),
+          so only comparisons between runs are meaningful.</p>
         <div id="r-viz-meta" class="viz-meta"></div>
         <canvas id="r-heatmap" width="640" height="500"></canvas>
         <div id="r-hover" class="viz-meta">&nbsp;</div>
@@ -284,13 +308,36 @@ async function renderResult() {
 
   const ec = viz.energy_conditions;
   document.querySelector("#r-ec tbody").innerHTML = ec
-    ? Object.values(ec).map(c =>
-        `<tr><td title="${esc(EC_TIP[c.condition] || "")}">${c.condition}</td>` + statusCell(c.status) +
-        `<td>${c.min_value !== null ? Number(c.min_value).toExponential(3) : "—"}</td>` +
-        `<td>${c.violation_fraction !== null
-              ? (100 * c.violation_fraction).toFixed(1) + "%" : "—"}</td>` +
-        `<td>${c.tolerance}</td></tr>`).join("")
-    : `<tr><td colspan="5">no energy-condition analysis for this experiment</td></tr>`;
+    ? Object.values(ec).map(c => {
+        const meaning = STATUS_MEANING[c.status] || {};
+        const info = CONDITIONS[c.condition] || {};
+        return `<tr>
+          <td title="${esc(info.plain || "")}"><strong>${c.condition}</strong>
+            <div class="viz-meta">${esc(info.plain || "")}</div></td>
+          <td class="${meaning.cls || ""}" title="${esc((meaning.text || "").replace(/<[^>]+>/g, ""))}">
+            ${esc(meaning.label || c.status)}</td>
+          <td>${c.min_value !== null ? Number(c.min_value).toExponential(3) : "—"}</td>
+          <td>${c.violation_fraction !== null
+                ? (100 * c.violation_fraction).toFixed(1) + "%" : "—"}</td>
+          <td>${c.tolerance}</td></tr>`;
+      }).join("")
+    : `<tr><td colspan="5">no energy-condition analysis for this experiment —
+       this run did not request one. The New Run form asks for a grid and
+       energy conditions; without them the pipeline computes the geometry but
+       never asks whether its matter is physical.</td></tr>`;
+
+  // The asymmetry is the point, and it belongs next to the table rather than
+  // buried in a tooltip.
+  const ecNote = document.getElementById("r-ec-note");
+  if (ecNote) {
+    ecNote.innerHTML = ec
+      ? `<strong>How to read this:</strong> a violation is <em>proved</em> —
+         one sampled observer measuring negative energy settles it, because
+         these are claims about every observer. “none found” is
+         <em>not</em> the reverse: sampling can never establish that no
+         counterexample exists. ${glossaryMarkup()}`
+      : "";
+  }
 
   renderVerdict(exp, validations, ec);
   drawHeatmap(viz.fields && viz.fields.eulerian_energy_density);
@@ -382,7 +429,8 @@ function drawHeatmap(field) {
   document.getElementById("r-hover").innerHTML = "&nbsp;";
   heatState = null;
   if (!field) {
-    meta.textContent = "no 2-D energy-density field available for this experiment";
+    meta.innerHTML = `no 2-D energy-density field available for this
+      experiment — it ran without a grid, so there is nothing to plot.`;
     return;
   }
   // values[i][j]: i runs over the first varying coordinate, j over the
@@ -495,6 +543,156 @@ function drawHeatmap(field) {
 
 
 
+
+// ------------------------------------------------------- reading the results
+// The numbers on these screens are meaningless without their physics. The
+// asymmetry below is the single most important thing to convey and the
+// easiest to get wrong: an energy condition is a statement about *every*
+// observer, so one sampled counterexample disproves it, while no amount of
+// sampling can prove it holds. "no_violation_detected" is therefore not
+// "passed" and must never be rendered as a tick.
+
+const CONDITIONS = {
+  NEC: {
+    name: "Null (NEC)",
+    plain: "Energy density is never negative, as measured along a beam of light.",
+    why: "The weakest of the four. Essentially all known matter obeys it, and " +
+         "violating it means the others fail too. This is the one that says " +
+         "<em>you need matter that does not exist</em>.",
+    severity: "exotic",
+  },
+  WEC: {
+    name: "Weak (WEC)",
+    plain: "Every observer travelling slower than light measures non-negative energy density.",
+    why: "The plain-language definition of ordinary matter. A violation means " +
+         "somebody, somewhere, measures a negative amount of energy in a box.",
+    severity: "exotic",
+  },
+  SEC: {
+    name: "Strong (SEC)",
+    plain: "Gravity attracts: matter focuses nearby paths together rather than pushing them apart.",
+    why: "Violated by things that are entirely real — dark energy violates it, " +
+         "and so does cosmic inflation. On its own an SEC violation is " +
+         "<strong>not</strong> evidence of exotic matter.",
+    severity: "notable",
+  },
+  DEC: {
+    name: "Dominant (DEC)",
+    plain: "Energy never flows faster than light, and energy density dominates pressure.",
+    why: "A causality-flavoured condition. Violations say the matter model " +
+         "moves energy in a way nothing observed does.",
+    severity: "exotic",
+  },
+};
+
+const STATUS_MEANING = {
+  confirmed_violation: {
+    label: "violated",
+    cls: "status-failed",
+    text: "A sampled observer measured a value below the tolerance. An energy " +
+          "condition is a claim about <em>every</em> observer, so a single " +
+          "counterexample settles it — this is a proof of violation.",
+  },
+  no_violation_detected: {
+    label: "none found",
+    cls: "status-passed",
+    text: "Every sample came back clean. This is <strong>not</strong> a proof " +
+          "that the condition holds: sampling can only ever find a " +
+          "counterexample, never rule one out. Read it as “nothing found yet”.",
+  },
+  inconclusive: {
+    label: "inconclusive",
+    cls: "status-warn",
+    text: "Sampling was too sparse, or the computation produced non-finite " +
+          "values at too many points, to say anything either way.",
+  },
+  failed: {
+    label: "failed",
+    cls: "status-failed",
+    text: "The evaluation itself broke down. No claim is made.",
+  },
+};
+
+function verdictFor(conditions) {
+  /* One honest sentence for a whole run.
+
+     Deliberately not a score. The distinction that matters to a reader is
+     exotic-matter violations (NEC/WEC/DEC) versus SEC alone, because SEC is
+     violated by dark energy and saying "4/4 violated" flattens that away. */
+  const violated = Object.entries(conditions)
+    .filter(([, c]) => c.status === "confirmed_violation").map(([n]) => n);
+  const exotic = violated.filter(n => (CONDITIONS[n] || {}).severity === "exotic");
+  const anyInconclusive = Object.values(conditions)
+    .some(c => c.status === "inconclusive");
+
+  if (exotic.length) {
+    return {
+      cls: "status-failed",
+      short: "Needs exotic matter",
+      long: `Violates ${exotic.join(", ")} — this spacetime can only exist if ` +
+            `something supplies negative energy density. No known material does.`,
+    };
+  }
+  if (violated.length) {
+    return {
+      cls: "status-warn",
+      short: "Unusual but not exotic",
+      long: `Violates only ${violated.join(", ")}. Dark energy violates the ` +
+            `strong condition too, so this is not by itself a demand for ` +
+            `matter that does not exist.`,
+    };
+  }
+  if (anyInconclusive) {
+    return { cls: "status-warn", short: "Not enough sampling",
+             long: "Sampling could not settle every condition." };
+  }
+  return {
+    cls: "status-passed",
+    short: "Nothing exotic found",
+    long: "No sampled observer measured negative energy. Sampling cannot " +
+          "prove a condition holds, so this is the best a search of this " +
+          "kind can report — not a guarantee.",
+  };
+}
+
+function glossaryMarkup() {
+  const rows = Object.entries(CONDITIONS).map(([key, c]) => `
+    <tr>
+      <td><strong>${esc(c.name)}</strong></td>
+      <td>${esc(c.plain)}</td>
+      <td class="viz-meta">${c.why}</td>
+    </tr>`).join("");
+  const statuses = Object.entries(STATUS_MEANING).map(([key, s]) => `
+    <li><span class="${s.cls}">${esc(s.label)}</span>
+        <code>${esc(key)}</code> — ${s.text}</li>`).join("");
+  return `
+    <details class="explainer">
+      <summary>What am I looking at?</summary>
+      <h4>The four energy conditions</h4>
+      <p class="viz-meta">A metric tells you the <em>shape</em> of spacetime.
+        Einstein's equations then tell you what matter that shape demands. These
+        four checks ask whether the demanded matter is anything that could exist.</p>
+      <table><thead><tr><th>condition</th><th>in plain terms</th><th>why it matters</th></tr></thead>
+        <tbody>${rows}</tbody></table>
+      <h4>What the statuses mean</h4>
+      <ul class="explainer-list">${statuses}</ul>
+      <h4>What good looks like</h4>
+      <p class="viz-meta"><strong>Good:</strong> no violations found, and an
+        energy-density map that is zero or positive everywhere. Flat, empty
+        spacetime (<code>minkowski</code>) is the reference — every condition
+        clean, density exactly zero. A spacetime you could build would look
+        like that, plus ordinary positive-energy matter where you put it.</p>
+      <p class="viz-meta"><strong>Bad:</strong> NEC or WEC violated, and blue
+        (negative) regions in the density map. That is a demand for matter with
+        negative energy density. Small amounts exist fleetingly in the lab (the
+        Casimir effect); the amounts these geometries need are enormous and
+        sustained, which is why no warp metric is buildable today.</p>
+      <p class="viz-meta"><strong>Units are geometrized</strong> (G = c = 1),
+        so densities are dimensionless and only <em>relative</em> comparisons
+        between runs are meaningful.</p>
+    </details>`;
+}
+
 // ------------------------------------------------------------ compare runs
 // One run answers "does this shape need negative energy". Comparing runs
 // answers "how much, and what makes it worse" — which is the only form the
@@ -517,6 +715,8 @@ async function loadCompare() {
     mSel.onchange = renderCompare;
   }
   document.getElementById("cmp-axis").onchange = renderCompare;
+  const ex = document.getElementById("cmp-explainer");
+  if (!ex.innerHTML) ex.innerHTML = glossaryMarkup();
   renderCompare();
 }
 
@@ -554,12 +754,15 @@ function renderCompare() {
       const worst = ["NEC", "WEC", "SEC", "DEC"]
         .map(c => (r.conditions[c] || {}).min_value)
         .filter(v => v !== undefined && v !== null);
-      const violated = Object.values(r.conditions)
-        .filter(c => c.status === "confirmed_violation").length;
+      const v = verdictFor(r.conditions);
+      const which = Object.entries(r.conditions)
+        .filter(([, c]) => c.status === "confirmed_violation")
+        .map(([n]) => n).join(" ") || "none";
       return `<tr>${cells}
+        <td class="${v.cls}" title="${esc(v.long)}">${esc(v.short)}</td>
+        <td title="which conditions a sampled observer disproved">${esc(which)}</td>
         <td>${fmt(r.energy_density.min, 5)}</td>
         <td>${worst.length ? fmt(Math.min(...worst), 4) : "—"}</td>
-        <td class="${violated ? "status-failed" : "status-passed"}">${violated}/4</td>
         <td>${(r.energy_density.negative_fraction * 100).toFixed(0)}%</td>
         <td><a href="#experiments/spacetime-geometry/results">${r.id.slice(0, 8)}</a></td>
       </tr>`;
@@ -568,8 +771,12 @@ function renderCompare() {
   document.getElementById("cmp-table").innerHTML = `
     <table>
       <thead><tr>${head}
-        <th>peak &rho; (min)</th><th>worst condition min</th>
-        <th>conditions violated</th><th>slice negative</th><th>run</th>
+        <th title="One-line reading of this run">verdict</th>
+        <th title="Conditions a sampled observer disproved">violated</th>
+        <th title="Most negative energy density anywhere on the slice. More negative = more exotic matter demanded.">peak &rho;</th>
+        <th title="Lowest value any sampled observer measured, across all four conditions">worst sample</th>
+        <th title="How much of the slice has negative energy density">slice negative</th>
+        <th>run</th>
       </tr></thead>
       <tbody>${body}</tbody>
     </table>`;
