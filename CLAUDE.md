@@ -142,7 +142,15 @@ Non-obvious requirements, each of which was once a live bug:
   (`forge_math/energy.py`, U-4). A **2-D slice integral is energy per unit
   length**, not an energy — promoting it would be wrong by a dimension and
   would look entirely reasonable beside a published figure. ADM is *gated*,
-  not approximated.
+  not approximated. Every gridded run writes them to
+  `energy_integrals.json` in its bundle (B-16 part 2).
+- **Alcubierre's chart sensitivity is exactly 1.0 and that is correct.** Its
+  spatial 3-metric is flat — the whole distortion lives in the lapse and
+  shift — so `√det ³g = 1` and the proper and coordinate integrals agree to
+  the bit. Natário's is not 1 (spherical chart, `det ³g = r²` over the
+  sampled `(r, θ)` plane). Do not "fix" the Alcubierre case; the pair is the
+  regression guard in `test_energy_integrals_in_bundle.py`, and if the two
+  ever agree it means the volume element stopped being applied.
 - **Golden hashes must never be updated to make a test pass.** If
   `test_metric_hash_stability.py` fails, the change altered provenance inputs
   — fix the change. Updating a golden silently orphans every bundle produced
@@ -171,12 +179,13 @@ SAGE research program can be *about* either domain; **geometry does not yet**
 — that is platform backlog P-9, blocked on a physics decision about what
 `compare` should say about two spacetimes.
 
-Current suite: **~220 passing, ~2 min 50 s** (the warp-metric symbolic work
+Current suite: **226 passing, ~3 min 20 s** (the warp-metric symbolic work
 lives here now, so this is the slow half of the pair).
 
 For what is next, read the platform's `docs/backlog.md` — the B-series items
-that live here are **B-16** (scoring; part 1 shipped, blocked on the platform
-persisting `g_μν` on the grid), **B-5** (geodesic/tidal diagnostics, computed
+that live here are **B-16** (scoring; parts 1 and 2 shipped — the "blocked on
+persisting `g_μν`" item turned out never to have been true, the metric has
+always been in `arrays/grid.npz`), **B-5** (geodesic/tidal diagnostics, computed
 but consumed by nothing) and **B-1** (numeric Kretschmann). And read the
 platform's `docs/limitations.md`, which is deliberately candid and should
 stay that way.

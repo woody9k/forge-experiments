@@ -10,6 +10,7 @@ bundle under EXPERIMENTS_DIR/<experiment-id>/:
     cross_backend.json     independent-backend comparison record (B-2), when
                            the cross-check ran for this metric
     energy_conditions.json energy-condition report (if a grid was requested)
+    energy_integrals.json  integrated energy in all three measures (B-16)
     arrays/*.npz           grid fields (metric, stress-energy, energy density)
     summary.md             human-readable summary
 
@@ -24,6 +25,7 @@ deferred — recorded in the manifest as `simplify_level`.
 
 from __future__ import annotations
 
+import json
 import os
 import time
 from dataclasses import asdict
@@ -35,6 +37,7 @@ import sympy as sp
 from forge_domain.entities import ExperimentStatus, ResultQuality, utcnow
 from forge_geometry.entities import ComputationResult, EnergyConditionConfig, Experiment, GridSpec, SolverBackend, ValidationResult
 from forge_math import compute_geometry
+from forge_math.energy import chart_sensitivity, energy_integrals
 from forge_math.numeric import build_grid, evaluate_matrix
 from forge_metrics import load_metric_file
 from forge_metrics.loader import ParsedMetric
@@ -245,6 +248,23 @@ def run_numerical_phase(run: ExperimentRun) -> None:
     run.checksums["energy_conditions.json"] = _dump(
         run.bundle_dir / "energy_conditions.json",
         {c: asdict(r) for c, r in rep.results.items()})
+
+    # B-16: "how much negative energy does this metric require?" — in all
+    # three measures, never aggregated.  The volume element comes from the
+    # 4-metric already evaluated on these exact grid points, so the proper
+    # measure (the one the literature quotes) is computed from the same
+    # samples as the density rather than reconstructed later.
+    integrals = energy_integrals(rep.eulerian_energy_density, axes,
+                                 [c.name for c in parsed.coords], metric=g_arr)
+    integral_warnings = [f"{m}: {w}" for m, r in integrals.items()
+                         for w in r.warnings]
+    run.checksums["energy_integrals.json"] = _dump(
+        run.bundle_dir / "energy_integrals.json",
+        {"integrals": {m: r.as_dict() for m, r in integrals.items()},
+         "chart_sensitivity": chart_sensitivity(integrals),
+         "coordinate_names": [c.name for c in parsed.coords],
+         "spatial_axes": list(axes)})
+
     run.timings["numerical_phase_s"] = time.monotonic() - t0
 
     quality = ResultQuality.SOLVER_FAILURE if nonfinite else ResultQuality.NUMERICAL_APPROXIMATION
@@ -258,6 +278,20 @@ def run_numerical_phase(run: ExperimentRun) -> None:
             convergence_status="single_resolution",
             warnings=field_warnings, checksum=run.checksums[loc],
         ))
+    # A separate row rather than a field on the density result: the integrals
+    # are a *derived* quantity with their own availability, their own units
+    # (an energy, or an energy per unit length on a plane) and their own
+    # warnings, and a consumer must be able to find them without knowing
+    # which array they came from.
+    run.computation_results.append(ComputationResult(
+        experiment_id=exp.id, result_type="grid:energy_integrals",
+        quality=quality, tensor_rank=0, dimensions=grid_dims,
+        array_location="energy_integrals.json",
+        units=integrals["coordinate"].unit or "geometrized",
+        precision=exp.precision, convergence_status="single_resolution",
+        warnings=field_warnings + integral_warnings,
+        checksum=run.checksums["energy_integrals.json"],
+    ))
 
 
 def finalize_run(run: ExperimentRun, status: ExperimentStatus, error: str | None = None) -> dict:
@@ -305,6 +339,25 @@ def _summary_md(run: ExperimentRun, manifest: dict) -> str:
     ]
     for v in run.validation_results:
         lines.append(f"| {v.validation_type} | {v.status.value} | {v.residual} | {v.tolerance} |")
+    integrals_path = run.bundle_dir / "energy_integrals.json"
+    if integrals_path.is_file():
+        # Side by side and never combined into one headline number: the
+        # disagreement between measures is the result (B-16, U-4).
+        report = json.loads(integrals_path.read_text())
+        lines += ["", "## Integrated energy", "",
+                  "| measure | total | negative part | negative fraction | unit |",
+                  "|---|---|---|---|---|"]
+        for measure, r in report["integrals"].items():
+            if r["available"]:
+                lines.append(
+                    f"| {measure} | {r['total']:.6e} | {r['negative_part']:.6e} "
+                    f"| {r['negative_fraction']:.3f} | {r['unit']} |")
+            else:
+                lines.append(f"| {measure} | unavailable | — | — | {r['reason']} |")
+        cs = report["chart_sensitivity"]
+        lines += ["", "Chart sensitivity (|proper/coordinate| on the negative "
+                      f"part): **{cs:.4f}**" if cs is not None
+                  else "Chart sensitivity: not computable for this run."]
     if run.warnings:
         lines += ["", "## Warnings", ""] + [f"* {w}" for w in run.warnings]
     lines += ["", "## Artifacts", ""]
