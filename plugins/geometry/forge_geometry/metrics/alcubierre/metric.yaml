@@ -43,12 +43,19 @@ metric:
 assumptions:
   - "R > 0"
   - "sigma > 0"
-# Symmetric window through the bubble: covers the wall at r_s = R = 1 on
-# the t = 0, z = 0 slice, where the published negative-energy shell lives.
+# Symmetric window through the bubble on the t = 0, z = 0 slice, where the
+# published negative-energy shell lives.  Bounds are in units of the bubble
+# radius, so the window follows the wall at r_s = R instead of staying at
+# +/-2 and truncating it: a fixed window put the wall at the grid edge for
+# R = 2, which reported a plausible energy rather than an error and moved
+# the fitted radius exponent by 25% (backlog B-16).
 default_grid:
   vary:
     x: [-2.0, 2.0]
     y: [-2.0, 2.0]
+  scale_with:
+    x: radius
+    y: radius
   fix:
     t: 0.0
     z: 0.0

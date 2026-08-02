@@ -37,10 +37,16 @@ assumptions:
 # r = 2M coordinate singularity and the theta = 0, pi poles where g_33
 # degenerates. A symmetric window straddling the horizon makes numerical
 # sampling (e.g. energy conditions) non-finite at most points.
+# The exterior only.  Radial bounds are in units of the mass, so the window
+# stays outside the horizon at r = 2M for every mass rather than only for
+# M = 1 — a fixed [2.5, 10] straddles the horizon as soon as M > 1.25 and
+# samples the interior, where the chart is degenerate.
 default_grid:
   vary:
     r: [2.5, 10.0]
     theta: [0.1, 3.04]
+  scale_with:
+    r: mass
   fix:
     t: 0.0
     phi: 0.0

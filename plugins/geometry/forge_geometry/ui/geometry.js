@@ -168,16 +168,54 @@ function renderBuilderFields() {
     (Object.entries(m.parameters).map(([k, p]) =>
       `<label>${k} (${p.symbol}) <input type="number" step="any" data-param="${k}"
         value="${p.default}"></label>`).join("") || "<em>none</em>");
+  renderGridFields(m);
+  // A scaled window has to follow its parameter, or the builder shows a
+  // window that stopped containing the structure the moment the radius
+  // changed — the truncation bug, reintroduced one text box at a time.
+  document.querySelectorAll("#b-params [data-param]").forEach(input => {
+    input.addEventListener("input", () => renderGridFields(m));
+  });
+}
+
+function currentParams(m) {
+  const params = {};
+  Object.entries(m.parameters).forEach(([k, p]) => { params[k] = p.default; });
+  document.querySelectorAll("#b-params [data-param]").forEach(i => {
+    const v = parseFloat(i.value);
+    if (Number.isFinite(v)) params[i.dataset.param] = v;
+  });
+  return params;
+}
+
+function renderGridFields(m) {
   // Per-metric sampling window from the definition YAML (e.g. the
-  // Schwarzschild exterior). Fallback for metrics without one: vary the
-  // 2nd and 3rd coordinates over a symmetric window.
+  // Schwarzschild exterior). Bounds listed in `scale_with` are in units of
+  // a parameter, so resolve them against the values in the form — same rule
+  // as DefaultGridSpec.resolve() server-side. Fallback for metrics without
+  // a default grid: vary the 2nd and 3rd coordinates over a symmetric window.
   const dg = m.default_grid;
+  const params = currentParams(m);
   const fallbackFix = { t: "0", z: "0", phi: "0", theta: "1.5708" };
+  const bound = (c) => {
+    const [lo, hi] = dg.vary[c];
+    const scaleParam = (dg.scale_with || {})[c];
+    const scale = scaleParam === undefined ? 1 : params[scaleParam];
+    // A non-positive scale would invert the window; leave the unscaled
+    // numbers visible rather than render nonsense the server will reject.
+    if (!(scale > 0)) return `${lo}:${hi}`;
+    return `${+(lo * scale).toPrecision(6)}:${+(hi * scale).toPrecision(6)}`;
+  };
+  const previous = {};
+  document.querySelectorAll("#b-grid [data-coord]").forEach(sel => {
+    previous[sel.dataset.coord] = sel.value;
+  });
   document.getElementById("b-grid").innerHTML = m.coordinates.map((c, i) => {
-    const varying = dg ? c in dg.vary : (i === 1 || i === 2);
+    const isVary = dg ? c in dg.vary : (i === 1 || i === 2);
+    // Respect a mode the user already chose; only the numbers rescale.
+    const varying = previous[c] === undefined ? isVary : previous[c] === "vary";
     const value = dg
-      ? (varying ? `${dg.vary[c][0]}:${dg.vary[c][1]}` : `${dg.fix[c] ?? 0}`)
-      : (varying ? "-2:2" : (fallbackFix[c] ?? "0"));
+      ? (isVary ? bound(c) : `${dg.fix[c] ?? 0}`)
+      : (isVary ? "-2:2" : (fallbackFix[c] ?? "0"));
     return `<label>${c}
       <select data-coord="${c}" class="grid-mode">
         <option value="vary" ${varying ? "selected" : ""}>vary</option>
