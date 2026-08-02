@@ -83,6 +83,16 @@
             "maxItems": 2
           }
         },
+        "scale_with": {
+          "type": "object",
+          "maxProperties": 5,
+          "description": "Varying coordinate -> the parameter its bounds are expressed in units of, so the window follows the structure instead of truncating it at large parameter values. Per-axis: a radius scales, an angle must not. Coordinates absent here have absolute bounds.",
+          "propertyNames": { "pattern": "^[a-zA-Z][a-zA-Z0-9_]{0,15}$" },
+          "additionalProperties": {
+            "type": "string",
+            "pattern": "^[a-zA-Z][a-zA-Z0-9_]{0,31}$"
+          }
+        },
         "fix": {
           "type": "object",
           "maxProperties": 5,

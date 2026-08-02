@@ -57,10 +57,55 @@ class DefaultGridSpec(BaseModel):
     guidance for choosing a physically sensible grid — e.g. the Schwarzschild
     exterior instead of a symmetric window straddling the horizon — not part
     of the metric's physical identity.
+
+    ``scale_with`` maps a *varying* coordinate to the parameter its bounds
+    are expressed in units of, so the window follows the structure instead
+    of staying where it was written. It is per-axis and opt-in because a
+    blanket scaling would be wrong: in a spherical chart ``r`` scales with
+    the bubble radius and ``theta`` is an angle that must not.
+
+    This is not cosmetic. A fixed window is a **truncation bug that reports
+    a number rather than an error**: the first sweep run on this platform
+    held ``[-2, 2]²`` while varying the Alcubierre radius up to 2, so the
+    largest bubbles had their wall at the grid edge, several runs reported a
+    negative fraction of 1.00, and the fitted radius and wall-steepness
+    exponents moved by 25% depending on which truncated runs were excluded.
+    The velocity exponent — the one axis nothing truncates — came out at
+    Alcubierre's exact 2.0 throughout, which is what made the contrast
+    visible.
     """
 
     vary: dict[str, tuple[float, float]]
     fix: dict[str, float] = Field(default_factory=dict)
+    #: coordinate name -> parameter name whose value its bounds are in units
+    #: of. A coordinate absent from this map has absolute bounds.
+    scale_with: dict[str, str] = Field(default_factory=dict)
+
+    def resolve(self, parameter_values: dict[str, float]
+                ) -> dict[str, tuple[float, float]]:
+        """Concrete bounds for these parameter values.
+
+        Raises on a non-positive or missing scale, rather than silently
+        producing an inverted or collapsed window — either would yield a
+        grid that evaluates fine and means nothing.
+        """
+        out: dict[str, tuple[float, float]] = {}
+        for coordinate, (lo, hi) in self.vary.items():
+            parameter = self.scale_with.get(coordinate)
+            if parameter is None:
+                out[coordinate] = (lo, hi)
+                continue
+            if parameter not in parameter_values:
+                raise ValueError(
+                    f"default grid scales {coordinate!r} with parameter "
+                    f"{parameter!r}, which has no value in {sorted(parameter_values)}")
+            scale = float(parameter_values[parameter])
+            if not scale > 0.0:
+                raise ValueError(
+                    f"cannot scale {coordinate!r} by {parameter}={scale}: a "
+                    f"non-positive scale inverts or collapses the window")
+            out[coordinate] = (lo * scale, hi * scale)
+        return out
 
 
 class MetricDefinition(BaseModel):

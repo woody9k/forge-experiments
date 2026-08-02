@@ -125,7 +125,8 @@ def load_metric_definition(raw: dict) -> ParsedMetric:
         coordinates=coords_names,
         metric_components=raw["metric"],
         assumptions=raw.get("assumptions", []),
-        default_grid=_parse_default_grid(raw.get("default_grid"), coords_names),
+        default_grid=_parse_default_grid(raw.get("default_grid"), coords_names,
+                                         parameters),
         source_citation=raw.get("source_citation", ""),
         author=raw.get("author", ""),
     )
@@ -149,16 +150,22 @@ def load_metric_definition(raw: dict) -> ParsedMetric:
     )
 
 
-def _parse_default_grid(raw_grid: dict | None, coords: list[str]) -> DefaultGridSpec | None:
+def _parse_default_grid(raw_grid: dict | None, coords: list[str],
+                        parameters: dict | None = None) -> DefaultGridSpec | None:
     """Validate an optional ``default_grid`` block against the coordinate list.
 
     Every coordinate must appear exactly once, either varied or fixed, so the
     block always describes a complete, unambiguous grid.
+
+    ``scale_with`` is checked against both the varying coordinates and the
+    metric's declared parameters here, at load time, because the alternative
+    is a KeyError raised much later from inside a sweep.
     """
     if raw_grid is None:
         return None
     vary = raw_grid.get("vary", {})
     fix = raw_grid.get("fix", {})
+    scale_with = raw_grid.get("scale_with", {}) or {}
     unknown = (set(vary) | set(fix)) - set(coords)
     if unknown:
         raise MetricLoadError(f"default_grid references unknown coordinates: {sorted(unknown)}")
@@ -174,7 +181,19 @@ def _parse_default_grid(raw_grid: dict | None, coords: list[str]) -> DefaultGrid
         if not lo < hi:
             raise MetricLoadError(
                 f"default_grid range for {c} must have min < max, got [{lo}, {hi}]")
-    return DefaultGridSpec(vary=vary, fix=fix)
+
+    not_varying = set(scale_with) - set(vary)
+    if not_varying:
+        raise MetricLoadError(
+            f"default_grid scale_with names coordinates that are not varied: "
+            f"{sorted(not_varying)}")
+    declared = set(parameters or {})
+    unknown_params = set(scale_with.values()) - declared
+    if unknown_params:
+        raise MetricLoadError(
+            f"default_grid scale_with references undeclared parameters: "
+            f"{sorted(unknown_params)}")
+    return DefaultGridSpec(vary=vary, fix=fix, scale_with=scale_with)
 
 
 def _build_matrix(components: dict[str, str], dim: int, symbols: dict[str, sp.Symbol]) -> sp.Matrix:

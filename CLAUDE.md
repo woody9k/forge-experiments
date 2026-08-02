@@ -144,6 +144,21 @@ Non-obvious requirements, each of which was once a live bug:
   would look entirely reasonable beside a published figure. ADM is *gated*,
   not approximated. Every gridded run writes them to
   `energy_integrals.json` in its bundle (B-16 part 2).
+- **The sampling window must follow the structure, and the resolution must
+  follow the wall.** Both failures return plausible numbers rather than
+  errors. `default_grid.scale_with` expresses bounds in units of a parameter
+  (per-axis — a radius scales, an angle must not); a fixed `[-2, 2]²` window
+  loses 12.4% of the integral at `R = 2`. Separately, Alcubierre's wall
+  thickness is `1/σ`, so resolving it needs `N ≫ 4Rσ` — a fixed sample count
+  under-resolves exactly the thin-wall runs a σ study is about.
+  `default_grid` is excluded from `compute_hash`, so changing a window does
+  **not** move a metric hash; `test_default_grid_scaling.py` asserts that,
+  because if it ever stopped being true, editing a sampling window would
+  orphan every bundle produced before the edit.
+- **`negative_fraction` is not a truncation diagnostic.** It reads 1.00 at
+  σ=4 while the integral is converged to 8 significant figures. The
+  diagnostic is window-width sensitivity of the integral. (This file
+  previously implied otherwise.)
 - **Alcubierre's chart sensitivity is exactly 1.0 and that is correct.** Its
   spatial 3-metric is flat — the whole distortion lives in the lapse and
   shift — so `√det ³g = 1` and the proper and coordinate integrals agree to
@@ -188,8 +203,12 @@ numbers and no subtraction. If a future change makes those deltas appear,
 it has reintroduced the "plausible number in the wrong units" failure the
 whole module exists to prevent.
 
-Current suite: **236 passing, ~4 min 50 s** (the warp-metric symbolic work
-lives here now, so this is the slow half of the pair).
+Current suite: **256 passing, ~8 min** — or **240 in ~3 min** with
+`-m "not slow"`, which deselects the 16 known-answer warp-metric runs. The
+warp-metric symbolic work lives here now, so this is the slow half of the
+pair, and the scaling-law validation (§3.1 of the platform's validation
+report) is most of the difference: each of its points costs a full symbolic
+pipeline. Run the whole thing before believing a geometry change.
 
 For what is next, read the platform's `docs/backlog.md` — the B-series items
 that live here are **B-16** (scoring; parts 1 and 2 shipped — the "blocked on
