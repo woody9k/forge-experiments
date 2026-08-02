@@ -36,6 +36,15 @@ def _register(registry) -> None:
     registry.add_persistence_metadata(GeometryBase.metadata)
     registry.add_sage_pack(_pack())
 
+    # How this domain runs a comparative experiment inside the governed
+    # research loop (platform backlog P-9).  Until this was registered,
+    # `sage_protocol.resolve("geometry")` raised and a geometry research
+    # program died at `design` — the domain with the physics in it was the
+    # one SAGE could not investigate.
+    from forge_geometry.app.protocol import PROTOCOL
+
+    registry.add_experiment_protocol(PROTOCOL)
+
     def _mcp_tools():
         # Lazy: MCP tools bind SAGE tool names, which exist only after every
         # plugin has registered and the allowlist sync has run.
