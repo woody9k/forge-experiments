@@ -220,6 +220,17 @@ def _summarise(measure: str, density: np.ndarray, weight: np.ndarray,
     negative = float(np.sum(integrand[negative_mask]) * cell)
     fraction = float(np.mean(negative_mask))
 
+    # Every sample was finite and the sum still is not: the accumulation
+    # overflowed.  Refuse rather than report it, because these totals are
+    # serialized into the run bundle and `json.dumps` writes a bare `NaN` /
+    # `Infinity` — readable by Python, invalid JSON to everything else, and
+    # indistinguishable from a real number to anything that ranks candidates.
+    if not (np.isfinite(total) and np.isfinite(negative)):
+        raise EnergyIntegralError(
+            "the integral overflowed to a non-finite value despite finite "
+            "samples; the density or the volume element is out of range for "
+            "this grid")
+
     if fraction == 0.0:
         warnings.append("no negative energy density on the sampled region — "
                         "either the metric requires none here, or the grid "
