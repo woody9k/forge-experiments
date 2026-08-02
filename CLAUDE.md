@@ -174,12 +174,21 @@ gate that never visually hid.
 ## 8. Where things stand
 
 Three plugins, all passing conformance; pendulum-lab passes with zero
-warnings. Matter and pendulum each contribute an `ExperimentProtocol`, so a
-SAGE research program can be *about* either domain; **geometry does not yet**
-— that is platform backlog P-9, blocked on a physics decision about what
-`compare` should say about two spacetimes.
+warnings. **All three now contribute an `ExperimentProtocol`**, so a SAGE
+research program can be about any of them — geometry's landed 2026-08-01
+(platform backlog P-9), and the physics decision it was parked on is
+answered by B-16: `compare`'s verdict is the three energy measures plus
+chart sensitivity.
 
-Current suite: **226 passing, ~3 min 20 s** (the warp-metric symbolic work
+Two refusals in `forge_geometry/app/protocol.py` are **correct behaviour,
+not gaps**. Arms integrating over different numbers of dimensions are never
+differenced, and arms in different charts are reported side by side with no
+delta — so an Alcubierre-vs-Natário comparison gives you both metrics'
+numbers and no subtraction. If a future change makes those deltas appear,
+it has reintroduced the "plausible number in the wrong units" failure the
+whole module exists to prevent.
+
+Current suite: **236 passing, ~4 min 50 s** (the warp-metric symbolic work
 lives here now, so this is the slow half of the pair).
 
 For what is next, read the platform's `docs/backlog.md` — the B-series items

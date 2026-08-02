@@ -26,6 +26,31 @@ rules always take precedence.
   choices sufficient for the hypothesis's observables; a warp-family metric
   that skips full simplification is expected platform behavior
   (`simplify_level: none`), not an error.
+- A geometry plan is one `kind: "baseline"` step and one or more
+  `kind: "candidate"` steps, each with `domain: "geometry"` and a `payload`
+  of `{metric_hash, parameter_values, grid}`. The arms differ in
+  `parameter_values` — that is what a geometry experiment varies. There is
+  no mutation operator in this domain; do not propose one.
+- **A candidate arm must specify a grid, and the same grid as its
+  baseline.** Without one the run stops after the symbolic phase and has no
+  integrated energy at all; with a different one the comparison is refused
+  rather than reported.
+
+## Comparison
+
+- The verdict for two spacetimes is the integrated energy in **three
+  measures side by side** — coordinate, proper, ADM — plus
+  `chart_sensitivity` (`|proper/coordinate|` on the negative part), which
+  says how much of an answer is the coordinate system rather than the
+  physics. There is no single scalar. Do not ask for one.
+- Two dimensional refusals apply, and both are correct rather than
+  limitations to work around: arms integrating over **different numbers of
+  dimensions** are never differenced (a slice integral is an energy per unit
+  length, a volume integral is an energy), and arms in **different charts**
+  are reported side by side with no delta. So a hypothesis comparing
+  Alcubierre against Natário must be phrased about each metric's own
+  behaviour along a parameter axis, not about the difference of their
+  totals.
 
 ## Interpretation
 
