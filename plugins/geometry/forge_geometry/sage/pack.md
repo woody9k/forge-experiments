@@ -31,10 +31,29 @@ rules always take precedence.
   of `{metric_hash, parameter_values, grid}`. The arms differ in
   `parameter_values` — that is what a geometry experiment varies. There is
   no mutation operator in this domain; do not propose one.
-- **A candidate arm must specify a grid, and the same grid as its
-  baseline.** Without one the run stops after the symbolic phase and has no
-  integrated energy at all; with a different one the comparison is refused
-  rather than reported.
+- **Every arm must specify a grid, and every arm the same grid.** Without
+  one the run stops after the symbolic phase and has no integrated energy at
+  all; with a different one per arm the comparison is refused rather than
+  reported. A plan whose steps carry no `grid` cannot test any hypothesis
+  about energy and will be vetoed.
+
+  A complete step, for a Cartesian metric on the `t = 0, z = 0` slice:
+
+  ```json
+  {"kind": "baseline", "domain": "geometry",
+   "payload": {"metric_hash": "<exact hash from the catalogue>",
+               "parameter_values": {"velocity": 0.5, "radius": 1.0,
+                                    "wall_steepness": 8.0},
+               "grid": {"bounds": {"x": [-2.0, 2.0], "y": [-2.0, 2.0]},
+                        "resolution": {"x": 32, "y": 32},
+                        "slice_values": {"t": 0.0, "z": 0.0}}}}
+  ```
+
+  `bounds` and `slice_values` together must name **every** coordinate of the
+  metric exactly once. A spherical metric uses `r`/`theta` bounds with
+  `t`/`phi` fixed instead — see the catalogue's coordinate list per metric.
+  Scale the bounds with the bubble radius: a window that does not contain
+  the wall silently under-reports the energy.
 
 ## Comparison
 
