@@ -14,9 +14,43 @@ from pathlib import Path
 from forge_sdk import PluginManifest, SagePack, SimplePlugin
 
 
+def _metric_catalogue() -> str:
+    """The trusted metrics' names, hashes and *parameter names*, as markdown.
+
+    The policy allowlist is a list of content hashes, which tells a model
+    which metrics it may use and nothing about how to address them. A live
+    run made the consequence concrete: given only hashes, the designer
+    produced a correct three-arm velocity sweep on the right metric and
+    invented the parameter names (`velocity_units_c`, `warp_width_s`,
+    `bubble_radius_m`), so `validate_arm` rejected the plan before a human
+    was asked to approve it. Nothing was wrong with the reasoning — the
+    vocabulary was never supplied.
+
+    Built at registration from the metric library rather than written into
+    `pack.md`, because parameter names are data: a metric added to the plugin
+    appears here without anyone remembering to update prose.
+    """
+    from forge_metrics import builtin_metrics, load_metric_file
+
+    lines = ["", "## Trusted metric catalogue", "",
+             "Address a metric by its exact `metric_hash`. Parameter names "
+             "must match this table exactly — a name not listed here is "
+             "rejected at design time, before approval.", ""]
+    for name, path in sorted(builtin_metrics().items()):
+        definition = load_metric_file(path).definition
+        parameters = ", ".join(
+            f"`{key}` (default {spec.default:g})"
+            for key, spec in sorted(definition.parameters.items())) or "none"
+        lines.append(f"- **{name}** — hash `{definition.hash}`; "
+                     f"coordinates {', '.join(definition.coordinates)}; "
+                     f"parameters: {parameters}")
+    return "\n".join(lines) + "\n"
+
+
 def _pack() -> SagePack:
     content = (resources.files("forge_geometry") / "sage" / "pack.md").read_text()
-    return SagePack(name="geometry", version="1", content=content)
+    return SagePack(name="geometry", version="2",
+                    content=content + _metric_catalogue())
 
 
 def _register(registry) -> None:
