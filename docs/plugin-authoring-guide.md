@@ -44,7 +44,7 @@ pendulum = "forge_pendulum.plugin:plugin"
 |---|---|
 | `add_api_router(router)` | FastAPI routes, mounted only while you are active |
 | `add_sage_tool(spec, handler)` | a typed tool a SAGE role may call |
-| `add_sage_pack(pack)` | domain expertise composed into role prompts |
+| `add_sage_pack(pack)` | domain expertise composed into role prompts (see *What belongs in a pack*) |
 | `add_selftest_suite(suite)` | what a worker must prove before running your work |
 | `add_task_type(task_type)` | a queue task the generic workers execute |
 | `add_persistence_metadata(metadata)` | tables you own (pair it with `add_migrations`, below) |
@@ -114,6 +114,33 @@ a tool you do not register is a conformance failure, not a runtime surprise.
 What stays the platform's: the state machine, the human gates, budgets,
 reserve-first idempotency, the audit trail, evidence re-verification and the
 claim ladder. Your protocol supplies the method and nothing else.
+
+### What belongs in a pack
+
+A SAGE pack is domain expertise composed into role prompts. Two lessons from
+driving the geometry pack against a live model, both of which cost a whole
+loop iteration to learn:
+
+**Put your vocabulary in it, generated from your data.** The program policy
+allowlists your objects by *content hash*, which tells a model what it may
+use and nothing about how to address it. Given only hashes, the geometry
+designer produced a correct experiment on the correct metric and invented
+the parameter names — rejected by `validate_arm` before a human saw it, with
+nothing wrong in the reasoning. Geometry's pack now emits a catalogue of
+every bundled metric (name, hash, coordinates, parameter names and defaults)
+built at registration from the metric library, so a metric added to the
+plugin appears without a prose edit. If your domain has names a plan must
+get exactly right, generate them into the pack.
+
+**State requirements as a worked example, not as prose.** The geometry pack
+said in words that every arm needs a grid. The designer omitted it; the
+skeptic then vetoed the plan, correctly, quoting that rule back. Replacing
+the sentence with a complete JSON step fixed it on the next run. A rule your
+own skeptic can cite to reject a plan is a rule the designer needed shown.
+
+Packs are markdown appended under a labeled heading, so they are cheap to
+edit — prompt text changes do not disturb the mock provider, which keys off
+context shape. Version the pack when its content changes meaningfully.
 
 ## Running on the Worker Fabric
 

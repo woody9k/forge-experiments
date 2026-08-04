@@ -40,8 +40,9 @@ python3.12 -m venv .venv
 .venv/bin/pip install -e ../forge-experiments    # these plugins
 
 # both suites — run BOTH, see §3
-.venv/bin/python -m pytest -q                    # platform: ~522 passing
-cd ../forge-experiments && pytest -q             # here: ~220 passing, ~2 min 50 s
+.venv/bin/python -m pytest -q                    # platform: ~529 passing
+cd ../forge-experiments && pytest -q             # here: ~259 passing, ~8 min
+#                                                (~243 in ~3 min with -m "not slow")
 ```
 
 There is one venv, and it lives in the **platform** checkout (`warpforge/.venv`).
@@ -203,7 +204,7 @@ numbers and no subtraction. If a future change makes those deltas appear,
 it has reintroduced the "plausible number in the wrong units" failure the
 whole module exists to prevent.
 
-Current suite: **256 passing, ~8 min** — or **240 in ~3 min** with
+Current suite: **259 passing, ~8 min** — or **243 in ~3 min** with
 `-m "not slow"`, which deselects the 16 known-answer warp-metric runs. The
 warp-metric symbolic work lives here now, so this is the slow half of the
 pair, and the scaling-law validation (§3.1 of the platform's validation
