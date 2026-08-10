@@ -49,7 +49,7 @@ def _metric_catalogue() -> str:
 
 def _pack() -> SagePack:
     content = (resources.files("forge_geometry") / "sage" / "pack.md").read_text()
-    return SagePack(name="geometry", version="2",
+    return SagePack(name="geometry", version="3",
                     content=content + _metric_catalogue())
 
 
