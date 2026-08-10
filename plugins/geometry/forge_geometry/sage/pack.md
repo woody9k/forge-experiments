@@ -31,11 +31,30 @@ rules always take precedence.
   of `{metric_hash, parameter_values, grid}`. The arms differ in
   `parameter_values` — that is what a geometry experiment varies. There is
   no mutation operator in this domain; do not propose one.
-- **Every arm must specify a grid, and every arm the same grid.** Without
-  one the run stops after the symbolic phase and has no integrated energy at
-  all; with a different one per arm the comparison is refused rather than
-  reported. A plan whose steps carry no `grid` cannot test any hypothesis
-  about energy and will be vetoed.
+- **Every arm must specify a grid.** Without one the run stops after the
+  symbolic phase and has no integrated energy at all, so a plan whose steps
+  carry no `grid` cannot test any hypothesis about energy and will be
+  vetoed.
+
+- **The rule for the window is coverage, not sameness: every arm's window
+  must contain that arm's structure.** The integral converges once the
+  window contains the bubble wall, so two arms sampled on
+  different-but-sufficient windows are directly comparable — verified to 8
+  significant figures as the window widens. What is *not* comparable is an
+  arm whose window truncates its own structure.
+
+  In practice:
+
+  - if the swept axis is **not** `radius`, the bubble is the same size in
+    every arm, so one identical window covering it is both correct and
+    simplest — use that;
+  - if the swept axis **is** `radius`, an identical window is *wrong*: it
+    must be sized for the largest arm, or every larger bubble is silently
+    truncated. Either widen the single window to cover the largest radius,
+    or scale each arm's bounds with its own radius. A fixed `[-2, 2]²` at
+    `R = 2` loses 12.4% of the integral and reports it without complaint.
+
+  Bounds of roughly `±2R` per Cartesian axis cover the wall comfortably.
 
   A complete step, for a Cartesian metric on the `t = 0, z = 0` slice:
 
@@ -52,8 +71,13 @@ rules always take precedence.
   `bounds` and `slice_values` together must name **every** coordinate of the
   metric exactly once. A spherical metric uses `r`/`theta` bounds with
   `t`/`phi` fixed instead — see the catalogue's coordinate list per metric.
-  Scale the bounds with the bubble radius: a window that does not contain
-  the wall silently under-reports the energy.
+
+- **Resolution must resolve the wall, not just the window.** The wall
+  thickness goes like `1/wall_steepness`, and the wall is the whole
+  structure — interior and exterior are flat. A window of width `W` sampled
+  at `N` points needs `N` comfortably above `W * wall_steepness`; at
+  `sigma = 8` over `[-2, 2]²`, 32 points is the minimum and 64 is safer.
+  Under-resolving a thin wall changes the integral without any warning.
 
 ## Comparison
 
