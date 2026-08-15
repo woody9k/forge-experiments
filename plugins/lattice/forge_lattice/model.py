@@ -50,8 +50,26 @@ def _materials(overrides: dict | None) -> dict[str, dict[str, float]]:
     for name, material in values.items():
         material["relative_permittivity"] = _finite(
             f"{name}.relative_permittivity", material["relative_permittivity"], positive=True)
-        material["conductivity_s_m"] = _finite(
+        conductivity = _finite(
             f"{name}.conductivity_s_m", material["conductivity_s_m"], nonnegative=True)
+        if conductivity == 0.0:
+            # Refused, not clamped.  This model divides the DC field by series
+            # *conduction* (E_i proportional to 1/sigma_i), which has no
+            # meaning once a layer carries no current: with any perfect
+            # insulator in the stack no steady DC current flows at all, and
+            # the division becomes capacitive (E_i proportional to
+            # 1/epsilon_i) — a different regime this model does not
+            # implement.  Substituting a tiny sigma instead produces a
+            # plausible number that is simply wrong: with *two* insulating
+            # materials the clamp made their weights equal, so the field
+            # divided 1:1 where the physics says 1/epsilon_r (a factor of 10
+            # out for eps_r = 1 against 10).
+            raise LatticeInputError(
+                f"{name}.conductivity_s_m must be positive: the DC model is "
+                f"conduction-limited, and a perfect insulator needs the "
+                f"capacitive divider, which this model does not implement. "
+                f"Use a small but real conductivity for a lossy dielectric.")
+        material["conductivity_s_m"] = conductivity
         material["density_kg_m3"] = _finite(
             f"{name}.density_kg_m3", material["density_kg_m3"], positive=True)
     return values
@@ -82,7 +100,7 @@ def simulate_stack(spec: dict[str, Any]) -> dict[str, Any]:
     sequence = ["mg_zn" if i % 2 == 0 else "bi" for i in range(count)]
     omega = 2 * math.pi * frequency
 
-    dc_weights = [1 / max(materials[n]["conductivity_s_m"], 1e-30) for n in sequence]
+    dc_weights = [1 / materials[n]["conductivity_s_m"] for n in sequence]
     dc_scale = dc_applied * count / sum(dc_weights)
     dc_fields = [dc_scale * w for w in dc_weights]
     gammas = [complex(materials[n]["conductivity_s_m"],
@@ -116,7 +134,7 @@ def simulate_stack(spec: dict[str, Any]) -> dict[str, Any]:
         "force_estimate_n": (pressures[i + 1] - pressures[i]) * area,
     } for i in range(count - 1)]
     eps_eff = count / sum(1 / materials[n]["relative_permittivity"] for n in sequence)
-    sigma_eff = count / sum(1 / max(materials[n]["conductivity_s_m"], 1e-30) for n in sequence)
+    sigma_eff = count / sum(1 / materials[n]["conductivity_s_m"] for n in sequence)
     gamma_eff = count / sum(1 / g for g in gammas)
     em_mass = total_energy / C**2
     return {
@@ -124,6 +142,10 @@ def simulate_stack(spec: dict[str, Any]) -> dict[str, Any]:
         "inputs": {"layer_count": count, "layer_thickness_m": thickness,
                    "frequency_hz": frequency, "dc_field_v_m": dc_applied,
                    "rf_field_amplitude_v_m": rf_applied, "area_m2": area,
+                   # Echoed because the weak-field scale below divides by it:
+                   # an output that cannot be reproduced from its own record
+                   # is not a result (platform principle 4).
+                   "observation_distance_m": distance,
                    "materials": materials},
         "layers": layers, "interfaces": interfaces,
         "effective_properties": {
