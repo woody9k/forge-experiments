@@ -16,6 +16,15 @@ DC field division uses conductivity; RF division uses complex admittivity
 electric energy density, Maxwell pressure, interface force estimates, series
 effective properties, and total EM energy.
 
+Because the DC divider is **conduction-limited**, every material needs a
+positive conductivity and a `conductivity_s_m` of exactly `0` is refused
+rather than approximated. With a perfect insulator anywhere in the stack no
+steady DC current flows at all and the division becomes capacitive
+(`E` proportional to `1/epsilon`), which is a different regime this model
+does not implement. Use a small but real conductivity for a lossy
+dielectric — that path works and puts essentially the whole field across the
+dielectric, as it should.
+
 The reported `E/c^2` mass equivalent and Newtonian acceleration scale are
 dimensional weak-field estimates, not a general-relativistic solution or
 evidence for anomalous gravity, propulsion, metric engineering, or measurable
